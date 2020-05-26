@@ -87,7 +87,7 @@ class Station(object):
                         except simpy.Interrupt:
                             log(self, "Frame holding lock was sent, resuming backoff")
                 try:
-                    log(self, "Backoff waited, sending frame")
+                    log(self, "Backoff completed, sending frame")
                     TRANSMITTING_STATIONS.append(self)
                     with self.transmission_resource.request(self.frame_to_send.frame_length) as req:
                         for station in ALL_STATIONS:
