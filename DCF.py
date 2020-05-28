@@ -6,7 +6,7 @@ import logging
 FRAME_LENGTH = 10
 CW_MIN = 15
 CW_MAX = 1023
-SIMULATION_TIME = 1000000
+SIMULATION_TIME = 100000
 NUM_OF_STATIONS = 10
 
 
@@ -18,8 +18,6 @@ ALL_STATIONS = None
 TRANSMITTED_FRAMES = []
 TRANSMITTING_STATIONS = []
 logging.basicConfig(format='%(message)s', level=logging.ERROR)
-
-# TODO Clean up and split into more transparent functions
 
 
 class Frame:
@@ -66,6 +64,9 @@ class Station(object):
         self.succeeded_transmissions = 0
         self.failed_transmissions = 0
 
+    def __repr__(self):
+        return self.col + f"{self.name}" + Colors.get_normal()
+
     def wait_to_send(self):
         while True:
             was_sent_completed = False
@@ -93,61 +94,72 @@ class Station(object):
                     log(self, "Backoff waited, sending frame")
                     TRANSMITTING_STATIONS.append(self)
                     with self.transmission_resource.request(self.frame_to_send.frame_length) as req:
-                        self.interrupt_other_station_backoff()
+                        self.interrupt_other_stations_backoff()
                         log(self, "Holding transmission lock")
                         yield req
                         yield self.env.timeout(self.frame_to_send.frame_length)
-                        # print(self.col + "Check if there was any collision..., time: {}".format(self.env.now) + RES)
-                        log(self, "Check if there was any collision...")
-                        if len(TRANSMITTING_STATIONS) != 1:
-                            log(self, f"There was collision, retrying, affected frames:{len(TRANSMITTING_STATIONS)}")
-                            for station in TRANSMITTING_STATIONS:
-                                if station != self:
-                                    station.process.interrupt()
-                                    station.frame_to_send.number_of_retransmissions += 1
-                            self.frame_to_send.number_of_retransmissions += 1
-                            TRANSMITTING_STATIONS.clear()
-                            raise simpy.Interrupt(None)
-                        TRANSMITTING_STATIONS.clear()
-                        log(self, "Successfully sent frame")
-                        was_sent_completed = True
-                        self.frame_to_send.t_end = self.env.now
-                        self.frame_to_send.t_to_send = self.frame_to_send.t_end - self.frame_to_send.t_start
-                        TRANSMITTED_FRAMES.append(self.frame_to_send)
-                        global SUCCEEDED_TRANSMISSIONS
-                        SUCCEEDED_TRANSMISSIONS += 1
-                        self.succeeded_transmissions += 1
-                except simpy.Interrupt:
-                    log(self, "Collision")
-                    global FAILED_TRANSMISSIONS
-                    FAILED_TRANSMISSIONS += 1
-                    self.failed_transmissions += 1
+                        self.check_if_was_collision()
+                        was_sent_completed = self.sent_completed()
 
-    def interrupt_other_station_backoff(self):
+                except simpy.Interrupt:
+                    self.sent_failed()
+
+    def sent_failed(self):
+        log(self, "Collision")
+        global FAILED_TRANSMISSIONS
+        FAILED_TRANSMISSIONS += 1
+        self.failed_transmissions += 1
+
+    def sent_completed(self):
+        log(self, "Successfully sent frame")
+        self.frame_to_send.t_end = self.env.now
+        self.frame_to_send.t_to_send = self.frame_to_send.t_end - self.frame_to_send.t_start
+        TRANSMITTED_FRAMES.append(self.frame_to_send)
+        global SUCCEEDED_TRANSMISSIONS
+        SUCCEEDED_TRANSMISSIONS += 1
+        self.succeeded_transmissions += 1
+        return True
+
+    def check_if_was_collision(self):
+        log(self, "Check if there was any collision...")
+        if len(TRANSMITTING_STATIONS) != 1:
+            log(self, f"There was collision, retrying, affected frames:{len(TRANSMITTING_STATIONS)}")
+            for station in TRANSMITTING_STATIONS:
+                if station != self:
+                    station.process.interrupt()
+                    station.frame_to_send.number_of_retransmissions += 1
+            self.frame_to_send.number_of_retransmissions += 1
+            TRANSMITTING_STATIONS.clear()
+            raise simpy.Interrupt(None)
+        TRANSMITTING_STATIONS.clear()
+
+    def interrupt_other_stations_backoff(self):
         for station in ALL_STATIONS:
             if station not in TRANSMITTING_STATIONS:
                 log(self, f"Informing station {station.name} about frame transmission started")
                 station.process.interrupt()
 
     def get_station_statistics(self):
-        sum_failed_succeeded = 1 if self.succeeded_transmissions + self.failed_transmissions == 0 else self.succeeded_transmissions + self.failed_transmissions
-        return self.col + f"Station name: {self.name}, Succeeded transmissions: {self.succeeded_transmissions}, Failed transmissions: " \
-               f"{self.failed_transmissions}," \
-               f" PCOLL: {self.failed_transmissions/sum_failed_succeeded}" + Colors.get_normal()
+        sum_failed_succeeded = 1 if self.succeeded_transmissions + self.failed_transmissions == 0 \
+            else self.succeeded_transmissions + self.failed_transmissions
+        return self.col + f"Station name: {self.name}, Succeeded transmissions: {self.succeeded_transmissions}," \
+                          f" Failed transmissions: {self.failed_transmissions} " \
+                          f"PCOLL: {self.failed_transmissions/sum_failed_succeeded}" + Colors.get_normal()
 
 
 if __name__ == "__main__":
-    random.seed(444)
+    # random.seed(444)
     environment = simpy.Environment()
     transmission_priority_resource = simpy.PriorityResource(environment, capacity=1)
     transmission_state_store = simpy.Store(environment)
     ALL_STATIONS = [Station(environment, transmission_priority_resource, "Station{}"
-                            .format(i), Colors.get_color()) for i in range(NUM_OF_STATIONS)]
+                            .format(i), Colors.get_color()) for i in range(1, NUM_OF_STATIONS + 1)]
     print(ALL_STATIONS)
     environment.run(until=SIMULATION_TIME)
     # for frame in TRANSMITTED_FRAMES:
     #     print(frame)
     print("GLOBAL FAILED_TRANSMISSIONS: {}, SUCCEEDED_TRANSMISSION{}, PCOLL: {}"
-          .format(FAILED_TRANSMISSIONS, SUCCEEDED_TRANSMISSIONS, FAILED_TRANSMISSIONS/(FAILED_TRANSMISSIONS + SUCCEEDED_TRANSMISSIONS)))
+          .format(FAILED_TRANSMISSIONS, SUCCEEDED_TRANSMISSIONS, FAILED_TRANSMISSIONS/(FAILED_TRANSMISSIONS
+                                                                                       + SUCCEEDED_TRANSMISSIONS)))
     for station in ALL_STATIONS:
         print(station.get_station_statistics())
