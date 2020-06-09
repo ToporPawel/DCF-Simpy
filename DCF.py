@@ -2,13 +2,17 @@ import random
 import simpy
 import Colors
 import logging
+import time
+import pandas as pd
+import matplotlib.pyplot as plt
 
 FRAME_LENGTH = 10
 CW_MIN = 15
 CW_MAX = 1023
 SIMULATION_TIME = 100000
-NUM_OF_STATIONS = 10
 
+STATION_RANGE = 10
+SIMS_PER_STATION_NUM = 5
 
 FAILED_TRANSMISSIONS = 0
 SUCCEEDED_TRANSMISSIONS = 0
@@ -17,15 +21,17 @@ SUCCEEDED_TRANSMISSIONS = 0
 ALL_STATIONS = None
 TRANSMITTED_FRAMES = []
 TRANSMITTING_STATIONS = []
-logging.basicConfig(format='%(message)s', level=logging.ERROR)
+
+
+logging.basicConfig(format='%(message)s', level=logging.INFO)
 
 
 class Frame:
 
-    def __init__(self, frame_length, station_name, output_color):
+    def __init__(self, frame_length, station_name, output_color, env):
         self.frame_length = frame_length
         self.number_of_retransmissions = 0
-        self.t_start = environment.now
+        self.t_start = env.now
         self.t_end = None
         self.t_to_send = None
         self.station_name = station_name
@@ -36,24 +42,24 @@ class Frame:
                % (self.t_start, self.t_end, self.t_to_send, self.number_of_retransmissions)
 
 
-def generate_new_frame(station_name, output_color):
-    # frame_length = random.randrange(FRAME_MIN_TIME, FRAME_MAX_TIME)
-    frame_length = FRAME_LENGTH
-    return Frame(frame_length, station_name, output_color)
-
-
-def generate_new_backoff(n):
-    upper_limit = pow(2, n)*(CW_MIN+1)-1
-    upper_limit = upper_limit if upper_limit <= CW_MAX else CW_MAX
-    return random.randint(0, upper_limit)
-
-
 def log(station, mes):
     logging.info(station.col + f"Time: {station.env.now} Station: {station.name} Message: {mes}" + Colors.get_normal())
 
 
-class Station(object):
+def generate_new_frame(station_name, output_color, env):
+    # frame_length = random.randrange(FRAME_MIN_TIME, FRAME_MAX_TIME)
+    frame_length = FRAME_LENGTH
+    return Frame(frame_length, station_name, output_color, env)
 
+
+def generate_new_backoff(n):
+    upper_limit = pow(2, n) * (CW_MIN + 1) - 1
+    upper_limit = upper_limit if upper_limit <= CW_MAX else CW_MAX
+    return random.randint(0, upper_limit)
+
+
+class Station(object):
+    
     def __init__(self, env, transmission_resource, name, output_color):
         self.name = name
         self.transmission_resource = transmission_resource
@@ -63,6 +69,9 @@ class Station(object):
         self.col = output_color
         self.succeeded_transmissions = 0
         self.failed_transmissions = 0
+        # self.cw_min = cw_min
+        # self.cw_max = cw_max
+        # self.frame_length = frame_length
 
     def __repr__(self):
         return self.col + f"{self.name}" + Colors.get_normal()
@@ -70,7 +79,7 @@ class Station(object):
     def wait_to_send(self):
         while True:
             was_sent_completed = False
-            self.frame_to_send = generate_new_frame(self.name, self.col)
+            self.frame_to_send = generate_new_frame(self.name, self.col, self.env)
             log(self, "New frame generated")
             while not was_sent_completed:
                 back_off = generate_new_backoff(self.frame_to_send.number_of_retransmissions)
@@ -85,6 +94,7 @@ class Station(object):
                     except simpy.Interrupt:
                         log(self, "Waiting was interrupted, waiting to resume backoff")
                         back_off -= self.env.now - start
+                        back_off -= 1
                         try:
                             with self.transmission_resource.request() as req:
                                 yield req
@@ -94,9 +104,9 @@ class Station(object):
                     log(self, "Backoff waited, sending frame")
                     TRANSMITTING_STATIONS.append(self)
                     with self.transmission_resource.request(self.frame_to_send.frame_length) as req:
+                        yield req
                         self.interrupt_other_stations_backoff()
                         log(self, "Holding transmission lock")
-                        yield req
                         yield self.env.timeout(self.frame_to_send.frame_length)
                         self.check_if_was_collision()
                         was_sent_completed = self.sent_completed()
@@ -139,6 +149,7 @@ class Station(object):
                 log(self, f"Informing station {station.name} about frame transmission started")
                 station.process.interrupt()
 
+
     def get_station_statistics(self):
         sum_failed_succeeded = 1 if self.succeeded_transmissions + self.failed_transmissions == 0 \
             else self.succeeded_transmissions + self.failed_transmissions
@@ -147,19 +158,63 @@ class Station(object):
                           f"PCOLL: {self.failed_transmissions/sum_failed_succeeded}" + Colors.get_normal()
 
 
-if __name__ == "__main__":
-    # random.seed(444)
+def clear_values():
+    global FAILED_TRANSMISSIONS, SUCCEEDED_TRANSMISSIONS, ALL_STATIONS, TRANSMITTED_FRAMES, TRANSMITTING_STATIONS
+    FAILED_TRANSMISSIONS = 0
+    SUCCEEDED_TRANSMISSIONS = 0
+    # FRAME_MIN_TIME = 5
+    # FRAME_MAX_TIME = 20
+    ALL_STATIONS = None
+    TRANSMITTED_FRAMES = []
+    TRANSMITTING_STATIONS = []
+
+
+def run_simulation(number_of_stations, seed):
+    global ALL_STATIONS
+    clear_values()
+    # random.seed(seed)
     environment = simpy.Environment()
     transmission_priority_resource = simpy.PriorityResource(environment, capacity=1)
-    transmission_state_store = simpy.Store(environment)
     ALL_STATIONS = [Station(environment, transmission_priority_resource, "Station{}"
-                            .format(i), Colors.get_color()) for i in range(1, NUM_OF_STATIONS + 1)]
+                            .format(i), Colors.get_color()) for i in range(1, number_of_stations + 1)]
     print(ALL_STATIONS)
     environment.run(until=SIMULATION_TIME)
     # for frame in TRANSMITTED_FRAMES:
     #     print(frame)
-    print("GLOBAL FAILED_TRANSMISSIONS: {}, SUCCEEDED_TRANSMISSION{}, PCOLL: {}"
-          .format(FAILED_TRANSMISSIONS, SUCCEEDED_TRANSMISSIONS, FAILED_TRANSMISSIONS/(FAILED_TRANSMISSIONS
-                                                                                       + SUCCEEDED_TRANSMISSIONS)))
+    p_coll = "{:.4f}".format(FAILED_TRANSMISSIONS / (FAILED_TRANSMISSIONS + SUCCEEDED_TRANSMISSIONS))
+    print(f"SEED = {seed} N={number_of_stations} CW_MIN = {CW_MIN} CW_MAX = {CW_MAX}  PCOLL: {p_coll} "
+          f"FAILED_TRANSMISSIONS: {FAILED_TRANSMISSIONS},"
+          f" SUCCEEDED_TRANSMISSION {SUCCEEDED_TRANSMISSIONS}")
+    add_to_results(p_coll)
     for station in ALL_STATIONS:
         print(station.get_station_statistics())
+
+
+def add_to_results(p_coll):
+    results["TIMESTAMP"].append(time.time())
+    results["CW_MIN"].append(CW_MIN)
+    results["CW_MAX"].append(CW_MAX)
+    results["N_OF_STATIONS"].append(n)
+    results["SEED"].append(seed)
+    results["P_COLL"].append(p_coll)
+    results["FAILED_TRANSMISSIONS"].append(FAILED_TRANSMISSIONS)
+    results["SUCCEEDED_TRANSMISSIONS"].append(SUCCEEDED_TRANSMISSIONS)
+
+
+if __name__ == "__main__":
+    results = {"TIMESTAMP": [],  "CW_MIN": [], "CW_MAX": [], "N_OF_STATIONS": [], "SEED": [], "P_COLL": [],
+               "FAILED_TRANSMISSIONS": [], "SUCCEEDED_TRANSMISSIONS": []}
+    # for seed in range(1, SIMS_PER_STATION_NUM + 1):
+    #     for n in range(1, STATION_RANGE + 1):
+    n = 4
+    seed = 1000
+    run_simulation(n, seed*33)
+    output_file_name = f"{CW_MIN}-{CW_MAX}-{STATION_RANGE}.csv"
+    pd.DataFrame(results).to_csv(output_file_name, index=False)
+    data = pd.read_csv(output_file_name, delimiter=',')
+    plt.figure()
+    print(pd.DataFrame(data.groupby(['N_OF_STATIONS'])['P_COLL'].mean()))
+    df = pd.DataFrame(data.groupby(['N_OF_STATIONS'])['P_COLL'].mean()).plot(kind='bar')
+    plt.show()
+
+
