@@ -210,6 +210,7 @@ if __name__ == "__main__":
     plt.figure()
     print(pd.DataFrame(data.groupby(['N_OF_STATIONS'])['P_COLL'].mean()))
     df = pd.DataFrame(data.groupby(['N_OF_STATIONS'])['P_COLL'].mean()).plot(kind='bar')
+    df.to_csv(f"{CW_MIN}-{CW_MAX}-{STATION_RANGE}-mean.csv")
     plt.show()
 
 
