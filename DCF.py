@@ -5,11 +5,14 @@ import logging
 import time
 import pandas as pd
 import matplotlib.pyplot as plt
+import Times as t
 
 FRAME_LENGTH = 10
+DATA_SIZE = 1500
 CW_MIN = 15
 CW_MAX = 1023
-SIMULATION_TIME = 1000000
+SIMULATION_TIME = 10000000
+R_limit = 4
 
 STATION_RANGE = 10
 SIMS_PER_STATION_NUM = 5
@@ -18,7 +21,7 @@ FAILED_TRANSMISSIONS = 0
 SUCCEEDED_TRANSMISSIONS = 0
 # FRAME_MIN_TIME = 5
 # FRAME_MAX_TIME = 20
-ALL_STATIONS = None
+ALL_STATIONS = []
 TRANSMITTED_FRAMES = []
 TRANSMITTING_STATIONS = []
 
@@ -46,9 +49,13 @@ def log(station, mes):
     logging.info(station.col + f"Time: {station.env.now} Station: {station.name} Message: {mes}" + Colors.get_normal())
 
 
+# def log_err(station, mes):
+#     logging.error("Error" + station.col + f"Time: {station.env.now} Station: {station.name} Message: {mes}" + Colors.get_normal())
+
+
 class Station(object):
     
-    def __init__(self, env, transmission_resource, name, output_color, cw_min=CW_MIN, cw_max=CW_MAX, frame_length=FRAME_LENGTH):
+    def __init__(self, env, transmission_resource, name, output_color, cw_min=CW_MIN, cw_max=CW_MAX):
         self.name = name
         self.transmission_resource = transmission_resource
         self.env = env
@@ -57,9 +64,10 @@ class Station(object):
         self.col = output_color
         self.succeeded_transmissions = 0
         self.failed_transmissions = 0
+        self.failed_transmissions_in_row = 0
         self.cw_min = cw_min
         self.cw_max = cw_max
-        self.frame_length = frame_length
+        self.mac_retry_drop = 0
 
     def __repr__(self):
         return self.col + f"{self.name}" + Colors.get_normal()
@@ -67,10 +75,10 @@ class Station(object):
     def wait_to_send(self):
         while True:
             was_sent_completed = False
-            self.frame_to_send = self.generate_new_frame(self.name, self.col, self.env)
+            self.frame_to_send = self.generate_new_frame()
             log(self, "New frame generated")
             while not was_sent_completed:
-                back_off = self.generate_new_backoff(self.frame_to_send.number_of_retransmissions)
+                back_off = self.generate_new_backoff(self.failed_transmissions_in_row)
                 log(self, f"Initial backoff: {back_off}")
                 while back_off:
                     log(self, f"In while backoff {back_off}")
@@ -98,8 +106,16 @@ class Station(object):
                         yield self.env.timeout(self.frame_to_send.frame_length)
                         self.check_if_was_collision()
                         was_sent_completed = self.sent_completed()
-
+                        # yield self.env.timeout(t.get_ack_frame_time())
                 except simpy.Interrupt:
+                    # wait = t.get_ack_timeout()
+                    # while wait:
+                    #     start = self.env.now
+                    #     try:
+                    #         yield self.env.timeout(wait)
+                    #         wait = 0
+                    #     except simpy.Interrupt:
+                    #         wait -= self.env.now - start
                     self.sent_failed()
 
     def sent_failed(self):
@@ -107,6 +123,11 @@ class Station(object):
         global FAILED_TRANSMISSIONS
         FAILED_TRANSMISSIONS += 1
         self.failed_transmissions += 1
+        self.failed_transmissions_in_row += 1
+        if self.frame_to_send.number_of_retransmissions > R_limit:
+            self.mac_retry_drop += 1
+            self.frame_to_send = self.generate_new_frame()
+            self.failed_transmissions_in_row = 0
 
     def sent_completed(self):
         log(self, "Successfully sent frame")
@@ -116,6 +137,7 @@ class Station(object):
         global SUCCEEDED_TRANSMISSIONS
         SUCCEEDED_TRANSMISSIONS += 1
         self.succeeded_transmissions += 1
+        self.failed_transmissions_in_row = 0
         return True
 
     def check_if_was_collision(self):
@@ -128,6 +150,7 @@ class Station(object):
                     station.frame_to_send.number_of_retransmissions += 1
             self.frame_to_send.number_of_retransmissions += 1
             TRANSMITTING_STATIONS.clear()
+
             raise simpy.Interrupt(None)
         TRANSMITTING_STATIONS.clear()
 
@@ -137,10 +160,11 @@ class Station(object):
                 log(self, f"Informing station {station.name} about frame transmission started")
                 station.process.interrupt()
 
-    def generate_new_frame(self, station_name, output_color, env):
-        # frame_length = random.randrange(FRAME_MIN_TIME, FRAME_MAX_TIME)
-        frame_length = self.frame_length
-        return Frame(frame_length, station_name, output_color, env)
+    def generate_new_frame(self):
+        # data_size = random.randrange(0, 2304)
+        # frame_length = t.get_ppdu_frame_time(DATA_SIZE)
+        frame_length = FRAME_LENGTH
+        return Frame(frame_length, self.name, self.col, self.env)
 
     def generate_new_backoff(self, n):
         upper_limit = pow(2, n) * (self.cw_min + 1) - 1
@@ -204,13 +228,15 @@ if __name__ == "__main__":
     for seed in range(1, SIMS_PER_STATION_NUM + 1):
         for n in range(1, STATION_RANGE + 1):
             run_simulation(n, seed*33)
-    output_file_name = f"{CW_MIN}-{CW_MAX}-{STATION_RANGE}.csv"
+    time_now = time.time()
+    output_file_name = f"{CW_MIN}-{CW_MAX}-{STATION_RANGE}-{time_now}.csv"
     pd.DataFrame(results).to_csv(output_file_name, index=False)
     data = pd.read_csv(output_file_name, delimiter=',')
     plt.figure()
     print(pd.DataFrame(data.groupby(['N_OF_STATIONS'])['P_COLL'].mean()))
-    df = pd.DataFrame(data.groupby(['N_OF_STATIONS'])['P_COLL'].mean()).plot(kind='bar')
-    df.to_csv(f"{CW_MIN}-{CW_MAX}-{STATION_RANGE}-mean.csv")
+    df = pd.DataFrame(data.groupby(['N_OF_STATIONS'])['P_COLL'].mean())
+    df.plot(kind='bar')
+    df.to_csv(f"{CW_MIN}-{CW_MAX}-{STATION_RANGE}-{time_now}-mean.csv")
     plt.show()
 
 
