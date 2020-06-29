@@ -1,0 +1,236 @@
+import random
+import simpy
+import Colors
+import logging
+import time
+import pandas as pd
+import matplotlib.pyplot as plt
+import threading
+import Times as t
+
+FRAME_LENGTH = 10
+DATA_SIZE = 1500
+CW_MIN = 15
+CW_MAX = 1023
+SIMULATION_TIME = 10000000
+R_limit = 4
+
+STATION_RANGE = 10
+SIMS_PER_STATION_NUM = 1
+
+big_num = 100000000
+
+
+logging.basicConfig(format='%(message)s', level=logging.ERROR)
+
+
+def log(station, mes):
+    logging.info(station.col + f"Time: {station.env.now} Station: {station.name} Message: {mes}" + Colors.get_normal())
+
+
+class Frame:
+
+    def __init__(self, frame_time, station_name, output_color, env):
+        self.frame_time = frame_time
+        self.number_of_retransmissions = 0
+        self.t_start = env.now
+        self.t_end = None
+        self.t_to_send = None
+        self.station_name = station_name
+        self.col = output_color
+
+    def __repr__(self):
+        return self.col + "Frame: start=%d, end=%d, frame_time=%d, retransmissions=%d" \
+               % (self.t_start, self.t_end, self.t_to_send, self.number_of_retransmissions)
+
+
+class Station(object):
+
+    def __init__(self, env, name, channel, cw_min=CW_MIN, cw_max=CW_MAX):
+        self.name = name
+        self.env = env
+        self.col = Colors.get_color()
+        self.frame_to_send = None
+        self.succeeded_transmissions = 0
+        self.failed_transmissions = 0
+        self.failed_transmissions_in_row = 0
+        self.cw_min = cw_min
+        self.cw_max = cw_max
+        self.mac_retry_drop = 0
+        self.channel = channel
+        env.process(self.start())
+        self.process = None
+        self.event = env.event()
+
+    def start(self):
+        while True:
+            self.frame_to_send = self.generate_new_frame()
+            was_sent = False
+            while not was_sent:
+                self.process = self.env.process(self.wait_back_off())
+                yield self.process
+                was_sent = yield self.env.process(self.send_frame())
+
+    def wait_back_off(self):
+        back_off = self.generate_new_back_off(self.failed_transmissions_in_row)
+        while back_off > -1:
+            try:
+                with self.channel.tx_lock.request() as req:
+                    yield req
+                log(self, f"Starting to wait backoff: ({back_off})u...")
+                start = self.env.now
+                self.channel.join_back_off(self)
+                back_off += t.t_difs
+                yield self.env.timeout(back_off)
+                log(self, f"Backoff waited, sending frame...")
+                back_off = -1
+                self.channel.leave_back_off(self)
+            except simpy.Interrupt:
+                log(self, "Waiting was interrupted, waiting to resume backoff...")
+                back_off -= self.env.now - start
+                back_off -= 1
+                # self.env.timeout(1)
+
+    def send_frame(self):
+        self.channel.join_tx_list(self)
+        res = self.channel.tx_queue.request(priority=(big_num - self.frame_to_send.frame_time))
+        try:
+            result = yield res | self.env.timeout(0)
+            if res not in result:
+                raise simpy.Interrupt("There is a longer frame...")
+            with self.channel.tx_lock.request() as lock:
+                yield lock
+                log(self, self.channel.back_off_list)
+                for station in self.channel.back_off_list:
+                    station.process.interrupt()
+                log(self, self.frame_to_send.frame_time)
+                yield self.env.timeout(self.frame_to_send.frame_time)
+                self.channel.back_off_list.clear()
+                was_sent = self.check_collision()
+                if was_sent:
+                    log(self, "master")
+                    yield self.env.timeout(t.t_sifs + t.get_ack_frame_time())
+                    self.channel.tx_list.clear()
+                    self.channel.tx_queue.release(res)
+                    return was_sent
+            log(self, "waiting wck timeout master")
+            self.channel.tx_list.clear()
+            self.channel.tx_queue.release(res)
+            self.channel.tx_queue = simpy.PreemptiveResource(self.env, capacity=1)
+            yield self.env.timeout(t.get_ack_timeout())
+            return was_sent
+        except simpy.Interrupt:
+            yield self.env.timeout(self.frame_to_send.frame_time)
+        was_sent = self.check_collision()
+        if was_sent:
+            yield self.env.timeout(t.t_sifs + t.get_ack_frame_time())
+        else:
+            log(self, "waiting wck timeout slave")
+            yield self.env.timeout(t.get_ack_timeout())
+        return was_sent
+
+    def check_collision(self):
+        if len(self.channel.tx_list) > 1:
+            self.sent_failed()
+            return False
+        else:
+            self.sent_completed()
+            return True
+
+    def generate_new_back_off(self, n):
+        upper_limit = pow(2, n) * (self.cw_min + 1) - 1
+        upper_limit = upper_limit if upper_limit <= self.cw_max else self.cw_max
+        return random.randint(0, upper_limit)
+
+    def generate_new_frame(self):
+        data_size = random.randrange(0, 2304)
+        frame_length = t.get_ppdu_frame_time(data_size)
+        # frame_length = FRAME_LENGTH
+        return Frame(frame_length, self.name, self.col, self.env)
+
+    def sent_failed(self):
+        log(self, "There was a collision")
+        self.frame_to_send.number_of_retransmissions += 1
+        self.channel.failed_transmissions += 1
+        self.failed_transmissions += 1
+        self.failed_transmissions_in_row += 1
+        log(self, self.channel.failed_transmissions)
+        if self.frame_to_send.number_of_retransmissions > R_limit:
+            self.mac_retry_drop += 1
+            self.frame_to_send = self.generate_new_frame()
+            self.failed_transmissions_in_row = 0
+
+    def sent_completed(self):
+        log(self, "Successfully sent frame")
+        self.frame_to_send.t_end = self.env.now
+        self.frame_to_send.t_to_send = self.frame_to_send.t_end - self.frame_to_send.t_start
+        self.channel.succeeded_transmissions += 1
+        self.succeeded_transmissions += 1
+        self.failed_transmissions_in_row = 0
+        log(self, self.channel.succeeded_transmissions)
+        return True
+
+
+class Channel(object):
+    def __init__(self, tx_queue: simpy.PreemptiveResource, env):
+        self.tx_queue = tx_queue
+        self.tx_list = []
+        self.back_off_list = []
+        self.tx_lock = simpy.Resource(env, capacity=1)
+        self.failed_transmissions = 0
+        self.succeeded_transmissions = 0
+
+    def join_back_off(self, station: Station):
+        self.back_off_list.append(station)
+
+    def leave_back_off(self, station: Station):
+        self.back_off_list.remove(station)
+
+    def join_tx_list(self, station: Station):
+        self.tx_list.append(station)
+
+
+def run_simulation(number_of_stations, seed):
+    environment = simpy.Environment()
+    channel = Channel(simpy.PreemptiveResource(environment, capacity=1), environment)
+    for i in range(1, number_of_stations + 1):
+        Station(environment, "Station{}".format(i), channel)
+    environment.run(until=SIMULATION_TIME)
+    p_coll = "{:.4f}".format(channel.failed_transmissions / (channel.failed_transmissions + channel.succeeded_transmissions))
+    print(f"SEED = {seed} N={number_of_stations} CW_MIN = {CW_MIN} CW_MAX = {CW_MAX}  PCOLL: {p_coll} "
+          f"FAILED_TRANSMISSIONS: {channel.failed_transmissions},"
+          f" SUCCEEDED_TRANSMISSION {channel.succeeded_transmissions}")
+    add_to_results(p_coll, channel, number_of_stations, seed)
+
+
+def add_to_results(p_coll, channel, n, seed):
+    results["TIMESTAMP"].append(time.time())
+    results["CW_MIN"].append(CW_MIN)
+    results["CW_MAX"].append(CW_MAX)
+    results["N_OF_STATIONS"].append(n)
+    results["SEED"].append(seed)
+    results["P_COLL"].append(p_coll)
+    results["FAILED_TRANSMISSIONS"].append(channel.failed_transmissions)
+    results["SUCCEEDED_TRANSMISSIONS"].append(channel.succeeded_transmissions)
+
+
+if __name__ == "__main__":
+    results = {"TIMESTAMP": [],  "CW_MIN": [], "CW_MAX": [], "N_OF_STATIONS": [], "SEED": [], "P_COLL": [],
+               "FAILED_TRANSMISSIONS": [], "SUCCEEDED_TRANSMISSIONS": []}
+    for seed in range(1, SIMS_PER_STATION_NUM + 1):
+        random.seed(seed*33)
+        threads = [threading.Thread(target=run_simulation, args=(n, seed,)) for n in range(1, STATION_RANGE + 1)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+    time_now = time.time()
+    output_file_name = f"{CW_MIN}-{CW_MAX}-{STATION_RANGE}-{time_now}.csv"
+    df = pd.DataFrame(results)
+    df.to_csv(output_file_name, index=False)
+    data = pd.read_csv(output_file_name, delimiter=',')
+    plt.figure()
+    df = pd.DataFrame(data.groupby(['N_OF_STATIONS'])['P_COLL'].mean())
+    df.plot(kind='bar')
+    df.to_csv(f"{CW_MIN}-{CW_MAX}-{STATION_RANGE}-{time_now}-mean.csv")
+    plt.show()
