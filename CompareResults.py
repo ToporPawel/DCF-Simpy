@@ -1,5 +1,7 @@
 import pandas as pd
-
+import matplotlib.pyplot as plt
+plt.close('all')
+plt.figure()
 
 def append_to_results(csv_name):
     results = pd.read_csv('results.csv', delimiter=',')
@@ -10,6 +12,7 @@ def append_to_results(csv_name):
 
     MSE = 0
     for key in results_dict.keys():
+        new_results[f"MSEn{key}"] = pow(results_dict[key] - new_results[key], 2) / 2
         MSE += pow(results_dict[key] - new_results[key], 2)
     MSE = MSE / len(results_dict.keys())
 
@@ -17,4 +20,9 @@ def append_to_results(csv_name):
     new_results['N_OF_STATIONS'] = 'P_COLL'
     results = results.append(new_results, ignore_index=True)
     results.to_csv('results.csv', index=False)
-
+    plt.figure()
+    results.iloc[[0,-1], 1:11].T.plot.bar()
+    plt.show()
+    plt.figure()
+    results.iloc[-1, 12:23].T.plot.bar()
+    plt.show()

@@ -220,7 +220,7 @@ if __name__ == "__main__":
                "FAILED_TRANSMISSIONS": [], "SUCCEEDED_TRANSMISSIONS": []}
     for seed in range(1, SIMS_PER_STATION_NUM + 1):
         random.seed(seed*33)
-        threads = [threading.Thread(target=run_simulation, args=(n, seed,)) for n in range(1, STATION_RANGE + 1)]
+        threads = [threading.Thread(target=run_simulation, args=(n, seed*33,)) for n in range(1, STATION_RANGE + 1)]
         for thread in threads:
             thread.start()
         for thread in threads:
