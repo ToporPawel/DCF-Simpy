@@ -58,8 +58,4 @@ def get_ack_timeout():
     return 45
 
 
-def get_slot_time():
-    return t_slot
-
-
-print(f"Tx time: {get_ppdu_frame_time(1472) + get_ack_frame_time()} u, Tx speed: {(1472*8)/(get_ppdu_frame_time(1472) + get_ack_frame_time())/pow(10, 6)} Mb/u")
+# print(f"Tx time: {get_ppdu_frame_time(1472) + get_ack_frame_time()} u, Tx speed: {(1472*8)/(get_ppdu_frame_time(1472) + get_ack_frame_time())/pow(10, 6)} Mb/u")
