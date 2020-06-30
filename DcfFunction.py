@@ -7,6 +7,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import threading
 import Times as t
+from CompareResults import append_to_results
 
 FRAME_LENGTH = 10
 DATA_SIZE = 1500
@@ -16,7 +17,7 @@ SIMULATION_TIME = 10000000
 R_limit = 4
 
 STATION_RANGE = 10
-SIMS_PER_STATION_NUM = 1
+SIMS_PER_STATION_NUM = 5
 
 big_num = 100000000
 
@@ -230,7 +231,8 @@ if __name__ == "__main__":
     df.to_csv(output_file_name, index=False)
     data = pd.read_csv(output_file_name, delimiter=',')
     plt.figure()
-    df = pd.DataFrame(data.groupby(['N_OF_STATIONS'])['P_COLL'].mean())
-    df.plot(kind='bar')
+    df = pd.DataFrame(data.groupby(['N_OF_STATIONS']).mean())
+    df['P_COLL'].plot(kind='bar')
     df.to_csv(f"{CW_MIN}-{CW_MAX}-{STATION_RANGE}-{time_now}-mean.csv")
     plt.show()
+    append_to_results(output_file_name)
