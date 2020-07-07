@@ -1,4 +1,5 @@
 import math
+import matplotlib.pyplot as plt
 
 t_slot = 9  # [u]
 t_sifs = 16  # [u]
@@ -39,7 +40,7 @@ def get_ppdu_frame_time(msdu):  # [u]
     ppdu_padding = ppdu_padding - (16 + mac_frame + 6)  # [b]
     cpsdu = service + mac_frame + tail + ppdu_padding  # [b]
 
-    ppdu = ofdm_preamble + ofdm_preamble + cpsdu/data_rate  # [u]
+    ppdu = ofdm_preamble + ofdm_signal + cpsdu/data_rate  # [u]
 
     ppdu_tx_time = t_difs + ppdu
 
@@ -58,4 +59,8 @@ def get_ack_timeout():
     return 45
 
 
-# print(f"Tx time: {get_ppdu_frame_time(1472) + get_ack_frame_time()} u, Tx speed: {(1472*8)/(get_ppdu_frame_time(1472) + get_ack_frame_time())/pow(10, 6)} Mb/u")
+def get_thr():
+    return (1472*8)/(get_ppdu_frame_time(1472) + get_ack_frame_time())
+
+
+# print(f"Tx time: {get_ppdu_frame_time(1472) + get_ack_frame_time()} u, Tx speed: {(1472*8*pow(10,6))/(get_ppdu_frame_time(1472) + get_ack_frame_time())/pow(10, 6)} Mb/u")

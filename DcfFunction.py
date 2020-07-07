@@ -7,10 +7,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import threading
 import Times as t
-from CompareResults import append_to_results
+from CompareResults import calculate_p_coll_mse, calculate_thr_mse
 
 FRAME_LENGTH = 10
-DATA_SIZE = 1500
+DATA_SIZE = 1472
 CW_MIN = 15
 CW_MAX = 1023
 SIMULATION_TIME = 10000000
@@ -31,7 +31,7 @@ def log(station, mes):
 
 class Frame:
 
-    def __init__(self, frame_time, station_name, output_color, env):
+    def __init__(self, frame_time, station_name, output_color, env, data_size):
         self.frame_time = frame_time
         self.number_of_retransmissions = 0
         self.t_start = env.now
@@ -39,6 +39,7 @@ class Frame:
         self.t_to_send = None
         self.station_name = station_name
         self.col = output_color
+        self.data_size = data_size
 
     def __repr__(self):
         return self.col + "Frame: start=%d, end=%d, frame_time=%d, retransmissions=%d" \
@@ -62,6 +63,7 @@ class Station(object):
         env.process(self.start())
         self.process = None
         self.event = env.event()
+        # self.bytes_sent = 0
 
     def start(self):
         while True:
@@ -144,10 +146,10 @@ class Station(object):
         return random.randint(0, upper_limit)
 
     def generate_new_frame(self):
-        data_size = random.randrange(0, 2304)
+        # data_size = random.randrange(0, 2304)
+        data_size = DATA_SIZE
         frame_length = t.get_ppdu_frame_time(data_size)
-        # frame_length = FRAME_LENGTH
-        return Frame(frame_length, self.name, self.col, self.env)
+        return Frame(frame_length, self.name, self.col, self.env, data_size)
 
     def sent_failed(self):
         log(self, "There was a collision")
@@ -168,6 +170,8 @@ class Station(object):
         self.channel.succeeded_transmissions += 1
         self.succeeded_transmissions += 1
         self.failed_transmissions_in_row = 0
+        self.channel.bytes_sent += self.frame_to_send.data_size
+        # self.bytes_sent += self.frame_to_send.data_size
         log(self, self.channel.succeeded_transmissions)
         return True
 
@@ -180,6 +184,7 @@ class Channel(object):
         self.tx_lock = simpy.Resource(env, capacity=1)
         self.failed_transmissions = 0
         self.succeeded_transmissions = 0
+        self.bytes_sent = 0
 
     def join_back_off(self, station: Station):
         self.back_off_list.append(station)
@@ -198,8 +203,8 @@ def run_simulation(number_of_stations, seed):
         Station(environment, "Station{}".format(i), channel)
     environment.run(until=SIMULATION_TIME)
     p_coll = "{:.4f}".format(channel.failed_transmissions / (channel.failed_transmissions + channel.succeeded_transmissions))
-    print(f"SEED = {seed} N={number_of_stations} CW_MIN = {CW_MIN} CW_MAX = {CW_MAX}  PCOLL: {p_coll} "
-          f"FAILED_TRANSMISSIONS: {channel.failed_transmissions},"
+    print(f"SEED = {seed} N={number_of_stations} CW_MIN = {CW_MIN} CW_MAX = {CW_MAX}  PCOLL: {p_coll} THR: {(channel.bytes_sent*8)/SIMULATION_TIME} "
+          f"FAILED_TRANSMISSIONS: {channel.failed_transmissions}"
           f" SUCCEEDED_TRANSMISSION {channel.succeeded_transmissions}")
     add_to_results(p_coll, channel, number_of_stations, seed)
 
@@ -211,13 +216,14 @@ def add_to_results(p_coll, channel, n, seed):
     results["N_OF_STATIONS"].append(n)
     results["SEED"].append(seed)
     results["P_COLL"].append(p_coll)
+    results["THR"].append((channel.bytes_sent*8)/SIMULATION_TIME)
     results["FAILED_TRANSMISSIONS"].append(channel.failed_transmissions)
     results["SUCCEEDED_TRANSMISSIONS"].append(channel.succeeded_transmissions)
 
 
 if __name__ == "__main__":
     results = {"TIMESTAMP": [],  "CW_MIN": [], "CW_MAX": [], "N_OF_STATIONS": [], "SEED": [], "P_COLL": [],
-               "FAILED_TRANSMISSIONS": [], "SUCCEEDED_TRANSMISSIONS": []}
+               "THR": [], "FAILED_TRANSMISSIONS": [], "SUCCEEDED_TRANSMISSIONS": []}
     for seed in range(1, SIMS_PER_STATION_NUM + 1):
         random.seed(seed*33)
         threads = [threading.Thread(target=run_simulation, args=(n, seed*33,)) for n in range(1, STATION_RANGE + 1)]
@@ -235,4 +241,5 @@ if __name__ == "__main__":
     df['P_COLL'].plot(kind='bar')
     df.to_csv(f"{CW_MIN}-{CW_MAX}-{STATION_RANGE}-{time_now}-mean.csv")
     plt.show()
-    append_to_results(output_file_name)
+    calculate_p_coll_mse(output_file_name)
+    calculate_thr_mse(output_file_name)
