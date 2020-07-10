@@ -17,20 +17,23 @@ SIMULATION_TIME = 10000000
 R_limit = 4
 
 STATION_RANGE = 10
-SIMS_PER_STATION_NUM = 5
+SIMS_PER_STATION_NUM = 10
 
-big_num = 100000000
+big_num = 1000000
 
 
-logging.basicConfig(format='%(message)s', level=logging.ERROR)
+logging.basicConfig(format="%(message)s", level=logging.ERROR)
 
 
 def log(station, mes):
-    logging.info(station.col + f"Time: {station.env.now} Station: {station.name} Message: {mes}" + Colors.get_normal())
+    logging.info(
+        station.col
+        + f"Time: {station.env.now} Station: {station.name} Message: {mes}"
+        + Colors.get_normal()
+    )
 
 
 class Frame:
-
     def __init__(self, frame_time, station_name, output_color, env, data_size):
         self.frame_time = frame_time
         self.number_of_retransmissions = 0
@@ -42,12 +45,14 @@ class Frame:
         self.data_size = data_size
 
     def __repr__(self):
-        return self.col + "Frame: start=%d, end=%d, frame_time=%d, retransmissions=%d" \
-               % (self.t_start, self.t_end, self.t_to_send, self.number_of_retransmissions)
+        return (
+            self.col
+            + "Frame: start=%d, end=%d, frame_time=%d, retransmissions=%d"
+            % (self.t_start, self.t_end, self.t_to_send, self.number_of_retransmissions)
+        )
 
 
 class Station(object):
-
     def __init__(self, env, name, channel, cw_min=CW_MIN, cw_max=CW_MAX):
         self.name = name
         self.env = env
@@ -80,10 +85,10 @@ class Station(object):
             try:
                 with self.channel.tx_lock.request() as req:
                     yield req
+                back_off += t.t_difs
                 log(self, f"Starting to wait backoff: ({back_off})u...")
                 start = self.env.now
                 self.channel.join_back_off(self)
-                back_off += t.t_difs
                 yield self.env.timeout(back_off)
                 log(self, f"Backoff waited, sending frame...")
                 back_off = -1
@@ -91,12 +96,14 @@ class Station(object):
             except simpy.Interrupt:
                 log(self, "Waiting was interrupted, waiting to resume backoff...")
                 back_off -= self.env.now - start
-                back_off -= 1
+                back_off -= 9
                 # self.env.timeout(1)
 
     def send_frame(self):
         self.channel.join_tx_list(self)
-        res = self.channel.tx_queue.request(priority=(big_num - self.frame_to_send.frame_time))
+        res = self.channel.tx_queue.request(
+            priority=(big_num - self.frame_to_send.frame_time)
+        )
         try:
             result = yield res | self.env.timeout(0)
             if res not in result:
@@ -111,12 +118,12 @@ class Station(object):
                 self.channel.back_off_list.clear()
                 was_sent = self.check_collision()
                 if was_sent:
-                    log(self, "master")
-                    yield self.env.timeout(t.t_sifs + t.get_ack_frame_time())
+                    # log(self, "master")
+                    yield self.env.timeout(t.get_ack_frame_time())
                     self.channel.tx_list.clear()
                     self.channel.tx_queue.release(res)
                     return was_sent
-            log(self, "waiting wck timeout master")
+            # log(self, "waiting wck timeout master")
             self.channel.tx_list.clear()
             self.channel.tx_queue.release(res)
             self.channel.tx_queue = simpy.PreemptiveResource(self.env, capacity=1)
@@ -143,7 +150,7 @@ class Station(object):
     def generate_new_back_off(self, n):
         upper_limit = pow(2, n) * (self.cw_min + 1) - 1
         upper_limit = upper_limit if upper_limit <= self.cw_max else self.cw_max
-        return random.randint(0, upper_limit)
+        return random.randint(0, upper_limit) * t.t_slot
 
     def generate_new_frame(self):
         # data_size = random.randrange(0, 2304)
@@ -164,15 +171,18 @@ class Station(object):
             self.failed_transmissions_in_row = 0
 
     def sent_completed(self):
-        log(self, "Successfully sent frame")
+        log(self, f"Successfully sent frame, waiting ack: {t.get_ack_frame_time()}")
         self.frame_to_send.t_end = self.env.now
-        self.frame_to_send.t_to_send = self.frame_to_send.t_end - self.frame_to_send.t_start
+        self.frame_to_send.t_to_send = (
+            self.frame_to_send.t_end - self.frame_to_send.t_start
+        )
         self.channel.succeeded_transmissions += 1
         self.succeeded_transmissions += 1
         self.failed_transmissions_in_row = 0
         self.channel.bytes_sent += self.frame_to_send.data_size
+        # self.channel.total_frame_time += self.frame_to_send.t_to_send + t.get_ack_frame_time()
         # self.bytes_sent += self.frame_to_send.data_size
-        log(self, self.channel.succeeded_transmissions)
+        # log(self, self.channel.succeeded_transmissions)
         return True
 
 
@@ -202,10 +212,15 @@ def run_simulation(number_of_stations, seed):
     for i in range(1, number_of_stations + 1):
         Station(environment, "Station{}".format(i), channel)
     environment.run(until=SIMULATION_TIME)
-    p_coll = "{:.4f}".format(channel.failed_transmissions / (channel.failed_transmissions + channel.succeeded_transmissions))
-    print(f"SEED = {seed} N={number_of_stations} CW_MIN = {CW_MIN} CW_MAX = {CW_MAX}  PCOLL: {p_coll} THR: {(channel.bytes_sent*8)/SIMULATION_TIME} "
-          f"FAILED_TRANSMISSIONS: {channel.failed_transmissions}"
-          f" SUCCEEDED_TRANSMISSION {channel.succeeded_transmissions}")
+    p_coll = "{:.4f}".format(
+        channel.failed_transmissions
+        / (channel.failed_transmissions + channel.succeeded_transmissions)
+    )
+    print(
+        f"SEED = {seed} N={number_of_stations} CW_MIN = {CW_MIN} CW_MAX = {CW_MAX}  PCOLL: {p_coll} THR: {(channel.bytes_sent*8)/SIMULATION_TIME} "
+        f"FAILED_TRANSMISSIONS: {channel.failed_transmissions}"
+        f" SUCCEEDED_TRANSMISSION {channel.succeeded_transmissions}"
+    )
     add_to_results(p_coll, channel, number_of_stations, seed)
 
 
@@ -216,17 +231,29 @@ def add_to_results(p_coll, channel, n, seed):
     results["N_OF_STATIONS"].append(n)
     results["SEED"].append(seed)
     results["P_COLL"].append(p_coll)
-    results["THR"].append((channel.bytes_sent*8)/SIMULATION_TIME)
+    results["THR"].append((channel.bytes_sent * 8) / SIMULATION_TIME)
     results["FAILED_TRANSMISSIONS"].append(channel.failed_transmissions)
     results["SUCCEEDED_TRANSMISSIONS"].append(channel.succeeded_transmissions)
 
 
 if __name__ == "__main__":
-    results = {"TIMESTAMP": [],  "CW_MIN": [], "CW_MAX": [], "N_OF_STATIONS": [], "SEED": [], "P_COLL": [],
-               "THR": [], "FAILED_TRANSMISSIONS": [], "SUCCEEDED_TRANSMISSIONS": []}
+    results = {
+        "TIMESTAMP": [],
+        "CW_MIN": [],
+        "CW_MAX": [],
+        "N_OF_STATIONS": [],
+        "SEED": [],
+        "P_COLL": [],
+        "THR": [],
+        "FAILED_TRANSMISSIONS": [],
+        "SUCCEEDED_TRANSMISSIONS": [],
+    }
     for seed in range(1, SIMS_PER_STATION_NUM + 1):
-        random.seed(seed*33)
-        threads = [threading.Thread(target=run_simulation, args=(n, seed*33,)) for n in range(1, STATION_RANGE + 1)]
+        random.seed(seed * 33)
+        threads = [
+            threading.Thread(target=run_simulation, args=(n, seed * 33,))
+            for n in range(1, STATION_RANGE + 1)
+        ]
         for thread in threads:
             thread.start()
         for thread in threads:
@@ -235,11 +262,8 @@ if __name__ == "__main__":
     output_file_name = f"{CW_MIN}-{CW_MAX}-{STATION_RANGE}-{time_now}.csv"
     df = pd.DataFrame(results)
     df.to_csv(output_file_name, index=False)
-    data = pd.read_csv(output_file_name, delimiter=',')
-    plt.figure()
-    df = pd.DataFrame(data.groupby(['N_OF_STATIONS']).mean())
-    df['P_COLL'].plot(kind='bar')
+    data = pd.read_csv(output_file_name, delimiter=",")
+    df = pd.DataFrame(data.groupby(["N_OF_STATIONS"]).mean())
     df.to_csv(f"{CW_MIN}-{CW_MAX}-{STATION_RANGE}-{time_now}-mean.csv")
-    plt.show()
     calculate_p_coll_mse(output_file_name)
     calculate_thr_mse(output_file_name)

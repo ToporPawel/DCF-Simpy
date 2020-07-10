@@ -34,15 +34,15 @@ def get_ppdu_frame_time(msdu):  # [u]
 
     # PPDU Frame
 
-    ppdu_padding = (16 + mac_frame + 6)/n_data
+    ppdu_padding = (16 + mac_frame + 6) / n_data
     ppdu_padding = math.ceil(ppdu_padding)
     ppdu_padding = ppdu_padding * n_data
     ppdu_padding = ppdu_padding - (16 + mac_frame + 6)  # [b]
     cpsdu = service + mac_frame + tail + ppdu_padding  # [b]
 
-    ppdu = ofdm_preamble + ofdm_signal + cpsdu/data_rate  # [u]
+    ppdu = ofdm_preamble + ofdm_signal + cpsdu / data_rate  # [u]
 
-    ppdu_tx_time = t_difs + ppdu
+    ppdu_tx_time = ppdu
 
     return math.ceil(ppdu_tx_time)
 
@@ -60,7 +60,7 @@ def get_ack_timeout():
 
 
 def get_thr():
-    return (1472*8)/(get_ppdu_frame_time(1472) + get_ack_frame_time())
+    return (1472 * 8) / (get_ppdu_frame_time(1472) + get_ack_frame_time() + t_difs)
 
 
 # print(f"Tx time: {get_ppdu_frame_time(1472) + get_ack_frame_time()} u, Tx speed: {(1472*8*pow(10,6))/(get_ppdu_frame_time(1472) + get_ack_frame_time())/pow(10, 6)} Mb/u")
