@@ -7,13 +7,13 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import threading
 import Times as t
-from CompareResults import calculate_p_coll_mse, calculate_thr_mse
+from CompareResults import calculate_p_coll_mse, calculate_thr_mse, calculate_mean_and_std
 
 FRAME_LENGTH = 10
 DATA_SIZE = 1472
 CW_MIN = 15
 CW_MAX = 1023
-SIMULATION_TIME = 10000000
+SIMULATION_TIME = 100000
 R_limit = 4
 
 STATION_RANGE = 10
@@ -252,7 +252,7 @@ if __name__ == "__main__":
         random.seed(seed * 33)
         threads = [
             threading.Thread(target=run_simulation, args=(n, seed * 33,))
-            for n in range(1, STATION_RANGE + 1)
+            for n in range(0, STATION_RANGE + 1)
         ]
         for thread in threads:
             thread.start()
@@ -262,8 +262,6 @@ if __name__ == "__main__":
     output_file_name = f"{CW_MIN}-{CW_MAX}-{STATION_RANGE}-{time_now}.csv"
     df = pd.DataFrame(results)
     df.to_csv(output_file_name, index=False)
-    data = pd.read_csv(output_file_name, delimiter=",")
-    df = pd.DataFrame(data.groupby(["N_OF_STATIONS"]).mean())
-    df.to_csv(f"{CW_MIN}-{CW_MAX}-{STATION_RANGE}-{time_now}-mean.csv")
+    calculate_mean_and_std(output_file_name)
     calculate_p_coll_mse(output_file_name)
     calculate_thr_mse(output_file_name)
