@@ -7,19 +7,21 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import threading
 import Times as t
-from CompareResults import calculate_p_coll_mse, calculate_thr_mse, calculate_mean_and_std
+from CompareResults import *
+from sklearn import preprocessing
 
 FRAME_LENGTH = 10
 DATA_SIZE = 1472
-CW_MIN = 15
+CW_MIN = 3
 CW_MAX = 1023
-SIMULATION_TIME = 100000
+SIMULATION_TIME = 50000000
 R_limit = 4
 
-STATION_RANGE = 10
+MIN_STATIONS = 5
+MAX_STATIONS = 5
 SIMS_PER_STATION_NUM = 10
 
-big_num = 1000000
+big_num = 10000000
 
 
 logging.basicConfig(format="%(message)s", level=logging.ERROR)
@@ -31,7 +33,6 @@ def log(station, mes):
         + f"Time: {station.env.now} Station: {station.name} Message: {mes}"
         + Colors.get_normal()
     )
-
 
 class Frame:
     def __init__(self, frame_time, station_name, output_color, env, data_size):
@@ -206,32 +207,32 @@ class Channel(object):
         self.tx_list.append(station)
 
 
-def run_simulation(number_of_stations, seed):
+def run_simulation(number_of_stations, seed, cw_min):
     environment = simpy.Environment()
     channel = Channel(simpy.PreemptiveResource(environment, capacity=1), environment)
     for i in range(1, number_of_stations + 1):
-        Station(environment, "Station{}".format(i), channel)
+        Station(environment, "Station{}".format(i), channel, cw_min=cw_min)
     environment.run(until=SIMULATION_TIME)
     p_coll = "{:.4f}".format(
         channel.failed_transmissions
         / (channel.failed_transmissions + channel.succeeded_transmissions)
     )
     print(
-        f"SEED = {seed} N={number_of_stations} CW_MIN = {CW_MIN} CW_MAX = {CW_MAX}  PCOLL: {p_coll} THR: {(channel.bytes_sent*8)/SIMULATION_TIME} "
+        f"SEED = {seed} N={number_of_stations} CW_MIN = {cw_min} CW_MAX = {CW_MAX}  PCOLL: {p_coll} THR: {(channel.bytes_sent*8)/SIMULATION_TIME} "
         f"FAILED_TRANSMISSIONS: {channel.failed_transmissions}"
         f" SUCCEEDED_TRANSMISSION {channel.succeeded_transmissions}"
     )
-    add_to_results(p_coll, channel, number_of_stations, seed)
+    add_to_results(p_coll, channel, number_of_stations, seed, cw_min)
 
 
-def add_to_results(p_coll, channel, n, seed):
+def add_to_results(p_coll, channel, n, seed, cw_min):
     results["TIMESTAMP"].append(time.time())
-    results["CW_MIN"].append(CW_MIN)
+    results["CW_MIN"].append(cw_min)
     results["CW_MAX"].append(CW_MAX)
     results["N_OF_STATIONS"].append(n)
     results["SEED"].append(seed)
     results["P_COLL"].append(p_coll)
-    results["THR"].append((channel.bytes_sent * 8) / SIMULATION_TIME)
+    results["THR"].append((channel.bytes_sent * 8) / (SIMULATION_TIME ))
     results["FAILED_TRANSMISSIONS"].append(channel.failed_transmissions)
     results["SUCCEEDED_TRANSMISSIONS"].append(channel.succeeded_transmissions)
 
@@ -248,20 +249,22 @@ if __name__ == "__main__":
         "FAILED_TRANSMISSIONS": [],
         "SUCCEEDED_TRANSMISSIONS": [],
     }
-    for seed in range(1, SIMS_PER_STATION_NUM + 1):
-        random.seed(seed * 33)
-        threads = [
-            threading.Thread(target=run_simulation, args=(n, seed * 33,))
-            for n in range(0, STATION_RANGE + 1)
-        ]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
+    for cw_min in [pow(2, x) - 1 for x in range(2, 11)]:
+        for seed in range(1, SIMS_PER_STATION_NUM + 1):
+            random.seed(seed * 33)
+            threads = [
+                threading.Thread(target=run_simulation, args=(n, seed * 33, cw_min))
+                for n in [5, 10, 20, 50]
+            ]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
     time_now = time.time()
-    output_file_name = f"{CW_MIN}-{CW_MAX}-{STATION_RANGE}-{time_now}.csv"
+    output_file_name = f"ChangeCW-{MAX_STATIONS}-{MIN_STATIONS}-{time_now}.csv"
     df = pd.DataFrame(results)
     df.to_csv(output_file_name, index=False)
-    calculate_mean_and_std(output_file_name)
-    calculate_p_coll_mse(output_file_name)
-    calculate_thr_mse(output_file_name)
+    file_mean = calculate_mean_and_std(output_file_name, group_by=["N_OF_STATIONS", "CW_MIN"])
+    plot_by_multiple_cw(file_mean)
+    # calculate_p_coll_mse(output_file_name)
+    # calculate_thr_mse(output_file_name)

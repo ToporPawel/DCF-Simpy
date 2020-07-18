@@ -2,6 +2,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import Times as t
+from matplotlib.lines import Line2D
+
 
 plt.close("all")
 MSE_NAMES = {0: "MSE-NS-3", 1: "MSE-AM", 2: "MSE-MS"}
@@ -145,11 +147,44 @@ def plot_thr(times_thr):
     plt.show()
 
 
-def calculate_mean_and_std(csv_name):
+def calculate_mean_and_std(csv_name, group_by=None):
+    if group_by is None:
+        group_by = ["N_OF_STATIONS"]
     data = pd.read_csv(csv_name, delimiter=",")
-    df = pd.DataFrame(data.groupby(["N_OF_STATIONS"]).mean())
-    df["THR_STD"] = data.groupby(["N_OF_STATIONS"])["THR"].std()
+    df = pd.DataFrame(data.groupby(["N_OF_STATIONS", "CW_MIN"]).mean())
+    df["THR_STD"] = data.groupby(group_by)["THR"].std()
     df.to_csv(f"{csv_name[:-4]}-mean.csv")
+    return f"{csv_name[:-4]}-mean.csv"
+
+
+def plot_by_multiple_cw(csv_name):
+    new_results = pd.read_csv(csv_name, delimiter=",").loc[:, ["N_OF_STATIONS", "THR", "CW_MIN"]]
+    # new_results["THR"] = new_results["THR"] / new_results["THR"].max()
+    cw = new_results.loc[new_results["N_OF_STATIONS"] == 5]["CW_MIN"].to_list()
+    print(cw)
+    plt.figure()
+    plt.plot(cw, new_results.loc[new_results["N_OF_STATIONS"] == 5]["THR"] / 54, "-bo")
+    plt.plot(cw, new_results.loc[new_results["N_OF_STATIONS"] == 10]["THR"] / 54, "-sb")
+    plt.plot(cw, new_results.loc[new_results["N_OF_STATIONS"] == 20]["THR"] / 54, "-bo", fillstyle='none')
+    plt.plot(cw, new_results.loc[new_results["N_OF_STATIONS"] == 50]["THR"] / 54, "-bs", fillstyle='none')
+    # new_results.loc[new_results["N_OF_STATIONS"] == 5].plot()
+    plt.xscale('log')
+    plt.xticks(cw, [str(n + 1) for n in cw])
+    # print(type(cs))
+    plt.legend(["n=5", "n=10", "n=20", "n=50"])
+    plt.xlabel("Cw_min size")
+    plt.ylabel("Normalized throughput")
+    plt.title("Saturation throughput vs cw_min")
+    plt.show()
+    # plt.figure()
+    # plt.plot(results.iloc[0, 0:10].T, "--o")
+    # plt.plot(results.iloc[1, 0:10].T, "--o")
+    # dcf_res = results.iloc[-1, 0:10].to_dict()
+    # plt.errorbar(dcf_res.keys(), dcf_res.values(), yerr=ci, fmt="--")
+    # plt.xlabel("Number of stations")
+    # plt.ylabel("Throughput [Mb/s]")
+
+
 
 # def calculate_mean():
 #     with open("results.txt", "r") as f:
@@ -169,11 +204,12 @@ def calculate_mean_and_std(csv_name):
 
 
 if __name__ == "__main__":
-    file = "15-1023-10-1594202254.353538.csv"
+    file = "ZmienneCw-final.csv"
     file_mean = f"{file[:-4]}-mean.csv"
-    # calculate_mean_and_std(file)
+    # calculate_mean_and_std(file, group_by=["N_OF_STATIONS", "CW_MIN"])
+    plot_by_multiple_cw(file_mean)
     # calculate_p_coll_mse(file)
-    calculate_thr_mse(file_mean)
+    # calculate_thr_mse(file_mean)
     # plot_thr(t.get_thr())
 
     # calculate_mean()

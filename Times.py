@@ -64,4 +64,4 @@ def get_thr():
 
 
 # print(f"Tx time: {get_ppdu_frame_time(1472) + get_ack_frame_time()} u, Tx speed: {(1472*8*pow(10,6))/(get_ppdu_frame_time(1472) + get_ack_frame_time())/pow(10, 6)} Mb/u")
-print(get_ppdu_frame_time(1472), get_ack_timeout(), get_ack_frame_time())
+# print(get_ppdu_frame_time(1472), get_ack_timeout(), get_ack_frame_time())
