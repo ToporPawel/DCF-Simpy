@@ -169,10 +169,10 @@ def calculate_mean_and_std(csv_name):
 
 
 if __name__ == "__main__":
-    file = "15-1023-10-1594202254.353538.csv"
+    file = "15-1023-10-1595099101.5140421.csv"
     file_mean = f"{file[:-4]}-mean.csv"
     # calculate_mean_and_std(file)
-    # calculate_p_coll_mse(file)
+    calculate_p_coll_mse(file_mean)
     calculate_thr_mse(file_mean)
     # plot_thr(t.get_thr())
 

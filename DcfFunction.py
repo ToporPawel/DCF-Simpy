@@ -13,7 +13,7 @@ FRAME_LENGTH = 10
 DATA_SIZE = 1472
 CW_MIN = 15
 CW_MAX = 1023
-SIMULATION_TIME = 100000
+SIMULATION_TIME = 10000000
 R_limit = 4
 
 STATION_RANGE = 10
@@ -160,7 +160,6 @@ class Station(object):
 
     def sent_failed(self):
         log(self, "There was a collision")
-        self.frame_to_send.number_of_retransmissions += 1
         self.channel.failed_transmissions += 1
         self.failed_transmissions += 1
         self.failed_transmissions_in_row += 1
@@ -169,6 +168,7 @@ class Station(object):
             self.mac_retry_drop += 1
             self.frame_to_send = self.generate_new_frame()
             self.failed_transmissions_in_row = 0
+        self.frame_to_send.number_of_retransmissions += 1
 
     def sent_completed(self):
         log(self, f"Successfully sent frame, waiting ack: {t.get_ack_frame_time()}")
@@ -252,7 +252,7 @@ if __name__ == "__main__":
         random.seed(seed * 33)
         threads = [
             threading.Thread(target=run_simulation, args=(n, seed * 33,))
-            for n in range(0, STATION_RANGE + 1)
+            for n in range(1, STATION_RANGE + 1)
         ]
         for thread in threads:
             thread.start()
