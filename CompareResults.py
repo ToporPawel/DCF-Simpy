@@ -2,6 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import Times as t
+import scipy.stats as st
 
 plt.close("all")
 MSE_NAMES = {0: "MSE-NS-3", 1: "MSE-AM", 2: "MSE-MS"}
@@ -43,6 +44,8 @@ def calculate_p_coll_mse(csv_name, notes=""):
         va="center",
         transform=ax.transAxes,
     )
+    plt.savefig("P_COLL_PER_STATION.pdf")
+    plt.show()
 
 
 def calculate_thr_mse(csv_name, notes=""):
@@ -83,6 +86,7 @@ def calculate_thr_mse(csv_name, notes=""):
         va="center",
         transform=ax.transAxes,
     )
+    plt.savefig("THR_PER_STATION.pdf")
     plt.show()
 
 def calculate_thr_mse2(csv_name, notes=""):
@@ -130,6 +134,7 @@ def calculate_thr_mse2(csv_name, notes=""):
         va="center",
         wrap=True,
     )
+    plt.savefig("THR_PER_STATION_WITH_ERR.pdf")
     plt.show()
 
 def plot_thr(times_thr):
@@ -142,6 +147,7 @@ def plot_thr(times_thr):
     plt.bar(names, values)
     plt.ylabel("Throughput [Mb/s]")
     plt.title("Throughput comparison")
+    plt.savefig("THR_Comparison.pdf")
     plt.show()
 
 
@@ -150,6 +156,17 @@ def calculate_mean_and_std(csv_name):
     df = pd.DataFrame(data.groupby(["N_OF_STATIONS"]).mean())
     df["THR_STD"] = data.groupby(["N_OF_STATIONS"])["THR"].std()
     df.to_csv(f"{csv_name[:-4]}-mean.csv")
+
+def show_backoffs(csv_name):
+    plt.figure()
+    data = pd.read_csv(csv_name, delimiter=",")
+    ax = data.iloc[9, :].plot(style=".")
+    ax.set_xlabel("Backoff")
+    ax.set_ylabel("Number of draws")
+    ax.set_yscale('log')
+    ax.set_xscale('log')
+    plt.savefig("Backoffs.pdf")
+    plt.show()
 
 # def calculate_mean():
 #     with open("results.txt", "r") as f:
@@ -169,11 +186,12 @@ def calculate_mean_and_std(csv_name):
 
 
 if __name__ == "__main__":
-    file = "15-1023-10-1595099101.5140421.csv"
+    file = "15-1023-10-1594202254.353538.csv"
     file_mean = f"{file[:-4]}-mean.csv"
     # calculate_mean_and_std(file)
-    calculate_p_coll_mse(file_mean)
-    calculate_thr_mse(file_mean)
+    # calculate_p_coll_mse(file_mean)
+    # calculate_thr_mse(file_mean)
     # plot_thr(t.get_thr())
+    show_backoffs("backoffs.csv")
 
     # calculate_mean()

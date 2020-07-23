@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 t_slot = 9  # [u]
 t_sifs = 16  # [u]
 t_difs = 2 * t_slot + t_sifs  # [u]
+ack_timeout = 45  # [u]
 
 # phy_data_rate = {"6": 6,"9": 9,"12": 12,"18": 18, "24": 24, "36": 36,"48": 48,"54": 54}  # [Mb/s]
 phy_data_rate = 54 * pow(10, -6)  # [Mb/u]
@@ -13,8 +14,7 @@ n_ctr = 4 * phy_ctr_rate  # [b/symbol]
 ctr_rate = phy_ctr_rate * pow(10, 6)  # [b/u]
 data_rate = phy_data_rate * pow(10, 6)  # [b/u]
 
-mac_header = 36 * 8  # [b]
-mac_tail = 4 * 8  # [b]
+mac_overhead = 40 * 8  # [b]
 
 service = 16  # [b]
 tail = 6  # [b]
@@ -30,7 +30,7 @@ def get_ppdu_frame_time(msdu):  # [u]
     msdu = msdu * 8  # [b]
 
     # MacFrame
-    mac_frame = mac_header + msdu + mac_tail  # [b]
+    mac_frame = mac_overhead + msdu  # [b]
 
     # PPDU Frame
 
@@ -56,7 +56,7 @@ def get_ack_frame_time():
 
 
 def get_ack_timeout():
-    return 45
+    return ack_timeout
 
 
 def get_thr():
@@ -64,4 +64,4 @@ def get_thr():
 
 
 # print(f"Tx time: {get_ppdu_frame_time(1472) + get_ack_frame_time()} u, Tx speed: {(1472*8*pow(10,6))/(get_ppdu_frame_time(1472) + get_ack_frame_time())/pow(10, 6)} Mb/u")
-print(get_ppdu_frame_time(1472), get_ack_timeout(), get_ack_frame_time())
+# print(get_ppdu_frame_time(1472), get_ack_timeout(), get_ack_frame_time())

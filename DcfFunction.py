@@ -7,20 +7,20 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import threading
 import Times as t
-from CompareResults import calculate_p_coll_mse, calculate_thr_mse, calculate_mean_and_std
+from CompareResults import calculate_p_coll_mse, calculate_thr_mse, calculate_mean_and_std, show_backoffs
 
 FRAME_LENGTH = 10
 DATA_SIZE = 1472
 CW_MIN = 15
 CW_MAX = 1023
 SIMULATION_TIME = 10000000
-R_limit = 4
+R_limit = 7
 
 STATION_RANGE = 10
 SIMS_PER_STATION_NUM = 10
 
-big_num = 1000000
-
+big_num = 10000000
+backoffs = {key: [0 for i in range(1, STATION_RANGE + 1)] for key in range(CW_MAX + 1)}
 
 logging.basicConfig(format="%(message)s", level=logging.ERROR)
 
@@ -150,7 +150,9 @@ class Station(object):
     def generate_new_back_off(self, n):
         upper_limit = pow(2, n) * (self.cw_min + 1) - 1
         upper_limit = upper_limit if upper_limit <= self.cw_max else self.cw_max
-        return random.randint(0, upper_limit) * t.t_slot
+        back_off = random.randint(0, upper_limit)
+        backoffs[back_off][self.channel.n_of_stations - 1] += 1
+        return back_off * t.t_slot
 
     def generate_new_frame(self):
         # data_size = random.randrange(0, 2304)
@@ -160,6 +162,7 @@ class Station(object):
 
     def sent_failed(self):
         log(self, "There was a collision")
+        self.frame_to_send.number_of_retransmissions += 1
         self.channel.failed_transmissions += 1
         self.failed_transmissions += 1
         self.failed_transmissions_in_row += 1
@@ -168,7 +171,6 @@ class Station(object):
             self.mac_retry_drop += 1
             self.frame_to_send = self.generate_new_frame()
             self.failed_transmissions_in_row = 0
-        self.frame_to_send.number_of_retransmissions += 1
 
     def sent_completed(self):
         log(self, f"Successfully sent frame, waiting ack: {t.get_ack_frame_time()}")
@@ -187,7 +189,7 @@ class Station(object):
 
 
 class Channel(object):
-    def __init__(self, tx_queue: simpy.PreemptiveResource, env):
+    def __init__(self, tx_queue: simpy.PreemptiveResource, env, n_of_stations):
         self.tx_queue = tx_queue
         self.tx_list = []
         self.back_off_list = []
@@ -195,6 +197,7 @@ class Channel(object):
         self.failed_transmissions = 0
         self.succeeded_transmissions = 0
         self.bytes_sent = 0
+        self.n_of_stations = n_of_stations
 
     def join_back_off(self, station: Station):
         self.back_off_list.append(station)
@@ -208,7 +211,7 @@ class Channel(object):
 
 def run_simulation(number_of_stations, seed):
     environment = simpy.Environment()
-    channel = Channel(simpy.PreemptiveResource(environment, capacity=1), environment)
+    channel = Channel(simpy.PreemptiveResource(environment, capacity=1), environment, number_of_stations)
     for i in range(1, number_of_stations + 1):
         Station(environment, "Station{}".format(i), channel)
     environment.run(until=SIMULATION_TIME)
@@ -252,7 +255,7 @@ if __name__ == "__main__":
         random.seed(seed * 33)
         threads = [
             threading.Thread(target=run_simulation, args=(n, seed * 33,))
-            for n in range(1, STATION_RANGE + 1)
+            for n in range(10, STATION_RANGE + 1)
         ]
         for thread in threads:
             thread.start()
@@ -262,6 +265,13 @@ if __name__ == "__main__":
     output_file_name = f"{CW_MIN}-{CW_MAX}-{STATION_RANGE}-{time_now}.csv"
     df = pd.DataFrame(results)
     df.to_csv(output_file_name, index=False)
+    backoffs = dict(sorted(backoffs.items()))
+    # for key, value in backoffs.items():
+    #     backoffs[key][0] = math.ceil(backoffs[key][0] / SIMS_PER_STATION_NUM)
+    pand = pd.DataFrame(backoffs)
+    pand.to_csv("backoffs.csv", index=False)
+    show_backoffs("backoffs.csv")
+    print(backoffs)
     calculate_mean_and_std(output_file_name)
     calculate_p_coll_mse(output_file_name)
     calculate_thr_mse(output_file_name)
