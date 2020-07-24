@@ -14,7 +14,7 @@ ack_size = 14 * 8  # [b]
 # overhead
 _overhead = 22  # [b]
 
-# Transmission rates
+# OFDM parameters
 phy_data_rate = 54 * pow(10, -6)  # [Mb/us] Possible values 6, 9, 12, 18, 24, 36, 48, 54
 phy_ctr_rate = 6 * pow(10, -6)  # [Mb/u]
 n_data = 4 * phy_data_rate  # [b/symbol]
@@ -22,7 +22,6 @@ n_ctr = 4 * phy_ctr_rate  # [b/symbol]
 ctr_rate = phy_ctr_rate * pow(10, 6)  # [b/us]
 data_rate = phy_data_rate * pow(10, 6)  # [b/us]
 
-# OFDM
 ofdm_preamble = 16  # [us]
 ofdm_signal = 24 / ctr_rate  # [us]
 

@@ -168,6 +168,20 @@ def show_backoffs(csv_name):
     ax.set_xscale('linear')
     plt.savefig("Backoffs.pdf")
     plt.show()
+    ranges = [16, 32, 64, 128, 256, 512, 1024]
+    merged = {}
+    start = 0
+    for cw in ranges:
+        merged[str(cw - 1)] = [sum(data.iloc[9, start:cw])]
+        start = cw
+    pd_merged = pd.DataFrame.from_dict(merged)
+    print(pd_merged.T)
+    plt.figure()
+    ax = pd_merged.T.plot.bar()
+    ax.set_xlabel("Backoff")
+    ax.set_ylabel("Number of draws")
+    plt.savefig("BackoffsMerged.pdf")
+    plt.show()
 
 # def calculate_mean():
 #     with open("results.txt", "r") as f:
