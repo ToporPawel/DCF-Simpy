@@ -13,7 +13,7 @@ FRAME_LENGTH = 10
 DATA_SIZE = 1472
 CW_MIN = 15
 CW_MAX = 1023
-SIMULATION_TIME = 10000000
+SIMULATION_TIME = 50000000
 R_limit = 7
 
 STATION_RANGE = 10
@@ -255,7 +255,7 @@ if __name__ == "__main__":
         random.seed(seed * 33)
         threads = [
             threading.Thread(target=run_simulation, args=(n, seed * 33,))
-            for n in range(10, STATION_RANGE + 1)
+            for n in range(1, STATION_RANGE + 1)
         ]
         for thread in threads:
             thread.start()

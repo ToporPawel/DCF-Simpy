@@ -6,7 +6,7 @@ import scipy.stats as st
 
 plt.close("all")
 MSE_NAMES = {0: "MSE-NS-3", 1: "MSE-AM", 2: "MSE-MS"}
-CIL = 1.96
+
 
 def calculate_p_coll_mse(csv_name, notes=""):
     results = pd.read_csv("results_p_coll.csv", delimiter=",")
@@ -157,6 +157,7 @@ def calculate_mean_and_std(csv_name):
     df["THR_STD"] = data.groupby(["N_OF_STATIONS"])["THR"].std()
     df.to_csv(f"{csv_name[:-4]}-mean.csv")
 
+
 def show_backoffs(csv_name):
     plt.figure()
     data = pd.read_csv(csv_name, delimiter=",")
@@ -164,7 +165,7 @@ def show_backoffs(csv_name):
     ax.set_xlabel("Backoff")
     ax.set_ylabel("Number of draws")
     ax.set_yscale('log')
-    ax.set_xscale('log')
+    ax.set_xscale('linear')
     plt.savefig("Backoffs.pdf")
     plt.show()
 
@@ -191,7 +192,7 @@ if __name__ == "__main__":
     # calculate_mean_and_std(file)
     # calculate_p_coll_mse(file_mean)
     # calculate_thr_mse(file_mean)
-    # plot_thr(t.get_thr())
+    # plot_thr(t.get_thr(1472))
     show_backoffs("backoffs.csv")
 
     # calculate_mean()

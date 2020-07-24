@@ -1,67 +1,63 @@
 import math
-import matplotlib.pyplot as plt
 
-t_slot = 9  # [u]
-t_sifs = 16  # [u]
-t_difs = 2 * t_slot + t_sifs  # [u]
-ack_timeout = 45  # [u]
+t_slot = 9  # [us]
+t_sifs = 16  # [us]
+t_difs = 2 * t_slot + t_sifs  # [us]
+ack_timeout = 45  # [us]
 
-# phy_data_rate = {"6": 6,"9": 9,"12": 12,"18": 18, "24": 24, "36": 36,"48": 48,"54": 54}  # [Mb/s]
-phy_data_rate = 54 * pow(10, -6)  # [Mb/u]
+# Mac overhead
+mac_overhead = 40 * 8  # [b]
+
+# ACK size
+ack_size = 14 * 8  # [b]
+
+# overhead
+_overhead = 22  # [b]
+
+# Transmission rates
+phy_data_rate = 54 * pow(10, -6)  # [Mb/us] Possible values 6, 9, 12, 18, 24, 36, 48, 54
 phy_ctr_rate = 6 * pow(10, -6)  # [Mb/u]
 n_data = 4 * phy_data_rate  # [b/symbol]
 n_ctr = 4 * phy_ctr_rate  # [b/symbol]
-ctr_rate = phy_ctr_rate * pow(10, 6)  # [b/u]
-data_rate = phy_data_rate * pow(10, 6)  # [b/u]
-
-mac_overhead = 40 * 8  # [b]
-
-service = 16  # [b]
-tail = 6  # [b]
+ctr_rate = phy_ctr_rate * pow(10, 6)  # [b/us]
+data_rate = phy_data_rate * pow(10, 6)  # [b/us]
 
 # OFDM
-ofdm_preamble = 16  # [u]
-ofdm_signal = 24 / ctr_rate  # [u]
+ofdm_preamble = 16  # [us]
+ofdm_signal = 24 / ctr_rate  # [us]
 
 
-def get_ppdu_frame_time(msdu):  # [u]
-
-    # backoff = t_cw * t_slot
-    msdu = msdu * 8  # [b]
-
+# Data frame time
+def get_ppdu_frame_time(payload):
+    msdu = payload * 8  # [b]
     # MacFrame
     mac_frame = mac_overhead + msdu  # [b]
-
+    # PPDU Padding
+    ppdu_padding = math.ceil((_overhead + mac_frame) / n_data) * n_data - (_overhead + mac_frame)
+    # CPSDU Frame
+    cpsdu = _overhead + mac_frame + ppdu_padding  # [b]
     # PPDU Frame
-
-    ppdu_padding = (16 + mac_frame + 6) / n_data
-    ppdu_padding = math.ceil(ppdu_padding)
-    ppdu_padding = ppdu_padding * n_data
-    ppdu_padding = ppdu_padding - (16 + mac_frame + 6)  # [b]
-    cpsdu = service + mac_frame + tail + ppdu_padding  # [b]
-
-    ppdu = ofdm_preamble + ofdm_signal + cpsdu / data_rate  # [u]
-
-    ppdu_tx_time = ppdu
-
-    return math.ceil(ppdu_tx_time)
+    ppdu = ofdm_preamble + ofdm_signal + cpsdu / data_rate  # [us]
+    ppdu_tx_time = math.ceil(ppdu)
+    return ppdu_tx_time  # [us]
 
 
+# ACK frame time with SIFS
 def get_ack_frame_time():
-    # ACK Frame
-    ack_size = service + 14 * 8 + tail  # [b]
-    ack = ofdm_preamble + ofdm_signal + ack_size / ctr_rate  # [u]
+    ack = _overhead + ack_size  # [b]
+    ack = ofdm_preamble + ofdm_signal + ack / ctr_rate  # [us]
     ack_tx_time = t_sifs + ack
-    return math.ceil(ack_tx_time)
+    return math.ceil(ack_tx_time)  # [us]
 
 
+# ACK Timeout
 def get_ack_timeout():
     return ack_timeout
 
 
-def get_thr():
-    return (1472 * 8) / (get_ppdu_frame_time(1472) + get_ack_frame_time() + t_difs)
+def get_thr(payload):
+    return (payload * 8) / (get_ppdu_frame_time(payload) + get_ack_frame_time() + t_difs)
 
 
-# print(f"Tx time: {get_ppdu_frame_time(1472) + get_ack_frame_time()} u, Tx speed: {(1472*8*pow(10,6))/(get_ppdu_frame_time(1472) + get_ack_frame_time())/pow(10, 6)} Mb/u")
+# print(f"Tx time: {get_ppdu_frame_time(1472) + get_ack_frame_time()} u, Tx speed: {get_thr(1472)} Mb/u")
 # print(get_ppdu_frame_time(1472), get_ack_timeout(), get_ack_frame_time())
