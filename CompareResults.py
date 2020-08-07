@@ -89,39 +89,61 @@ def calculate_thr_mse(csv_name, notes=""):
     plt.savefig("THR_PER_STATION.pdf")
     plt.show()
 
+
 def calculate_thr_mse2(csv_name, notes=""):
     results = pd.read_csv("results_thr.csv", delimiter=",")
     results_dict = results.iloc[0:2, 0:10].to_dict()
-    new_results = pd.read_csv(csv_name, delimiter=",").T
-    std = new_results.T["THR_STD"].to_list()
+    thr_frame = pd.read_csv(csv_name, delimiter=",")
+    # std = new_results.T["THR_STD"].to_list()
     new_results = {
         str(int(pair["N_OF_STATIONS"])): pair["THR"]
-        for pair in new_results.to_dict().values()
+        for pair in thr_frame.T.to_dict().values()
     }
-    ci = []
-    for n in range(len(std)):
-        ci.append(CIL * std[n] / new_results.get(f"{(n + 1)}"))
-    new_results["Name"] = "DCF-SimPy"
-    new_results["Notes"] = notes
-    for i in range(2):
-        mse = 0
-        for key in results_dict.keys():
-            mse += pow(results_dict[key][i] - new_results[key], 2)
-        mse = mse / len(results_dict.keys())
-        new_results[MSE_NAMES[i]] = "{:.2E}".format(mse)
-    results = results.append(new_results, ignore_index=True)
-    results.to_csv("results_thr.csv", index=False)
-    plt.figure()
+    thr_frame.drop('TIMESTAMP', axis=1, inplace=True)
+    thr_frame.drop('CW_MIN', axis=1, inplace=True)
+    thr_frame.drop('CW_MAX', axis=1, inplace=True)
+    thr_frame.drop('SEED', axis=1, inplace=True)
+    thr_frame.drop('P_COLL', axis=1, inplace=True)
+    thr_frame.drop('FAILED_TRANSMISSIONS', axis=1, inplace=True)
+    thr_frame.drop('SUCCEEDED_TRANSMISSIONS', axis=1, inplace=True)
+
+    alpha = 0.05
+    # print(thr_frame)
+    std = thr_frame.groupby('N_OF_STATIONS').std().loc[:, 'THR']
+    # print(std)
+    n = thr_frame.groupby('N_OF_STATIONS').count().loc[:, 'THR']
+    # Calculate confidence intervals
+    yerr = std / np.sqrt(n) * st.t.ppf(1 - alpha / 2, n - 1)
+    # print(yerr)
+    # Group by nWifi and calculate average (mean) aggregate throughput
+    plot_sum = thr_frame.groupby(['N_OF_STATIONS']).mean()
+    # Plot with confidence intervals
+    # ax = plot_sum.plot(yerr=yerr, color='black', legend=False, ylim=(0, 35), capsize=4)
+    # ax.set(xlabel="Number of transmitting Wi-Fi stations", ylabel="Network throughput [Mb/s]")
+    # print(plot_sum.columns)
+    # plt.tight_layout()
+    # plt.savefig('chart.pdf');
+    # new_results["Name"] = "DCF-SimPy"
+    # new_results["Notes"] = notes
+    # for i in range(2):
+    #     mse = 0
+    #     for key in results_dict.keys():
+    #         mse += pow(results_dict[key][i] - new_results[key], 2)
+    #     mse = mse / len(results_dict.keys())
+    #     new_results[MSE_NAMES[i]] = "{:.2E}".format(mse)
+    # results = results.append(new_results, ignore_index=True)
+    # results.to_csv("results_thr.csv", index=False)
+    # plt.figure()
     plt.plot(results.iloc[0, 0:10].T, "--o")
     plt.plot(results.iloc[1, 0:10].T, "--o")
-    dcf_res = results.iloc[-1, 0:10].to_dict()
-    plt.errorbar(dcf_res.keys(),dcf_res.values(), yerr=ci, fmt="--")
+    # dcf_res = results.iloc[-1, 0:10].to_dict()
+    plt.errorbar([i for i in range(0,10)], plot_sum.loc[:, "THR"], yerr=yerr, fmt="--", capsize=4)
     plt.xlabel("Number of stations")
     plt.ylabel("Throughput [Mb/s]")
-    plt.ylim(0, 35)
-    # x_ticks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    # plt.xticks(range(len(x_ticks)))
-    # plt.xticklabels(x_ticks)
+    # plt.ylim(0, 35)
+    # # x_ticks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    # # plt.xticks(range(len(x_ticks)))
+    # # plt.xticklabels(x_ticks)
     plt.legend(results.iloc[[0, 1, -1], 10].tolist())
     plt.text(
         5.7,
@@ -134,7 +156,7 @@ def calculate_thr_mse2(csv_name, notes=""):
         va="center",
         wrap=True,
     )
-    plt.savefig("THR_PER_STATION_WITH_ERR.pdf")
+    plt.savefig("THR_PER_STATION_ERR.pdf")
     plt.show()
 
 def plot_thr(times_thr):
@@ -175,7 +197,6 @@ def show_backoffs(csv_name):
         merged[str(cw - 1)] = [sum(data.iloc[9, start:cw])]
         start = cw
     pd_merged = pd.DataFrame.from_dict(merged)
-    print(pd_merged.T)
     plt.figure()
     ax = pd_merged.T.plot.bar()
     ax.set_xlabel("Backoff")
@@ -204,9 +225,10 @@ if __name__ == "__main__":
     file = "15-1023-10-1594202254.353538.csv"
     file_mean = f"{file[:-4]}-mean.csv"
     # calculate_mean_and_std(file)
-    # calculate_p_coll_mse(file_mean)
-    # calculate_thr_mse(file_mean)
-    # plot_thr(t.get_thr(1472))
+    calculate_p_coll_mse(file_mean)
+    calculate_thr_mse2(file_mean)
+    calculate_thr_mse(file_mean)
+    plot_thr(t.get_thr(1472))
     show_backoffs("backoffs.csv")
 
     # calculate_mean()
