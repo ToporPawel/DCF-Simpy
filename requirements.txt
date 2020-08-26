@@ -1,3 +1,5 @@
 simpy
 pandas
 matplotlib
+numpy
+scipy

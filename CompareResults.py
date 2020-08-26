@@ -9,7 +9,7 @@ MSE_NAMES = {0: "MSE-NS-3", 1: "MSE-AM", 2: "MSE-MS"}
 
 
 def calculate_p_coll_mse(csv_name, notes=""):
-    results = pd.read_csv("results_p_coll.csv", delimiter=",")
+    results = pd.read_csv("csv_results/results_p_coll.csv", delimiter=",")
     results_dict = results.iloc[0:3, 0:10].to_dict()
     new_results = pd.read_csv(csv_name, delimiter=",").T
     new_results = {
@@ -26,7 +26,8 @@ def calculate_p_coll_mse(csv_name, notes=""):
         new_results[MSE_NAMES[i]] = "{:.2E}".format(mse)
     results = results.append(new_results, ignore_index=True)
     results.to_csv("results_p_coll.csv", index=False)
-    ax = results.iloc[[0, 1, 2, -1], 0:10].T.plot(style="--o")
+    styles = ["*--", ".--", "1--", "|--"]
+    ax = results.iloc[[0, 1, 2, -1], 0:10].T.plot(style=styles, lw=0.5)
     ax.set_xlabel("Number of stations")
     ax.set_ylabel("Collision probability")
     x_ticks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
@@ -44,12 +45,12 @@ def calculate_p_coll_mse(csv_name, notes=""):
         va="center",
         transform=ax.transAxes,
     )
-    plt.savefig("P_COLL_PER_STATION.pdf")
+    plt.savefig("pdf/P_COLL_PER_STATION.pdf")
     plt.show()
 
 
 def calculate_thr_mse(csv_name, notes=""):
-    results = pd.read_csv("results_thr.csv", delimiter=",")
+    results = pd.read_csv("csv_results/results_thr.csv", delimiter=",")
     results_dict = results.iloc[0:2, 0:10].to_dict()
     new_results = pd.read_csv(csv_name, delimiter=",").T
     new_results = {
@@ -86,58 +87,34 @@ def calculate_thr_mse(csv_name, notes=""):
         va="center",
         transform=ax.transAxes,
     )
-    plt.savefig("THR_PER_STATION.pdf")
+    plt.savefig("pdf/THR_PER_STATION.pdf")
     plt.show()
 
 
 def calculate_thr_mse2(csv_name, notes=""):
-    results = pd.read_csv("results_thr.csv", delimiter=",")
-    results_dict = results.iloc[0:2, 0:10].to_dict()
+    results = pd.read_csv("csv_results/results_thr.csv", delimiter=",")
     thr_frame = pd.read_csv(csv_name, delimiter=",")
-    # std = new_results.T["THR_STD"].to_list()
-    new_results = {
-        str(int(pair["N_OF_STATIONS"])): pair["THR"]
-        for pair in thr_frame.T.to_dict().values()
-    }
-    thr_frame.drop('TIMESTAMP', axis=1, inplace=True)
-    thr_frame.drop('CW_MIN', axis=1, inplace=True)
-    thr_frame.drop('CW_MAX', axis=1, inplace=True)
-    thr_frame.drop('SEED', axis=1, inplace=True)
-    thr_frame.drop('P_COLL', axis=1, inplace=True)
-    thr_frame.drop('FAILED_TRANSMISSIONS', axis=1, inplace=True)
-    thr_frame.drop('SUCCEEDED_TRANSMISSIONS', axis=1, inplace=True)
-
+    thr_frame.drop("TIMESTAMP", axis=1, inplace=True)
+    thr_frame.drop("CW_MIN", axis=1, inplace=True)
+    thr_frame.drop("CW_MAX", axis=1, inplace=True)
+    thr_frame.drop("SEED", axis=1, inplace=True)
+    thr_frame.drop("P_COLL", axis=1, inplace=True)
+    thr_frame.drop("FAILED_TRANSMISSIONS", axis=1, inplace=True)
+    thr_frame.drop("SUCCEEDED_TRANSMISSIONS", axis=1, inplace=True)
     alpha = 0.05
-    # print(thr_frame)
-    std = thr_frame.groupby('N_OF_STATIONS').std().loc[:, 'THR']
-    # print(std)
-    n = thr_frame.groupby('N_OF_STATIONS').count().loc[:, 'THR']
-    # Calculate confidence intervals
+    std = thr_frame.groupby("N_OF_STATIONS").std().loc[:, "THR"]
+    n = thr_frame.groupby("N_OF_STATIONS").count().loc[:, "THR"]
     yerr = std / np.sqrt(n) * st.t.ppf(1 - alpha / 2, n - 1)
-    # print(yerr)
-    # Group by nWifi and calculate average (mean) aggregate throughput
-    plot_sum = thr_frame.groupby(['N_OF_STATIONS']).mean()
-    # Plot with confidence intervals
-    # ax = plot_sum.plot(yerr=yerr, color='black', legend=False, ylim=(0, 35), capsize=4)
-    # ax.set(xlabel="Number of transmitting Wi-Fi stations", ylabel="Network throughput [Mb/s]")
-    # print(plot_sum.columns)
-    # plt.tight_layout()
-    # plt.savefig('chart.pdf');
-    # new_results["Name"] = "DCF-SimPy"
-    # new_results["Notes"] = notes
-    # for i in range(2):
-    #     mse = 0
-    #     for key in results_dict.keys():
-    #         mse += pow(results_dict[key][i] - new_results[key], 2)
-    #     mse = mse / len(results_dict.keys())
-    #     new_results[MSE_NAMES[i]] = "{:.2E}".format(mse)
-    # results = results.append(new_results, ignore_index=True)
-    # results.to_csv("results_thr.csv", index=False)
-    # plt.figure()
+    plot_sum = thr_frame.groupby(["N_OF_STATIONS"]).mean()
     plt.plot(results.iloc[0, 0:10].T, "--o")
     plt.plot(results.iloc[1, 0:10].T, "--o")
-    # dcf_res = results.iloc[-1, 0:10].to_dict()
-    plt.errorbar([i for i in range(0,10)], plot_sum.loc[:, "THR"], yerr=yerr, fmt="--", capsize=4)
+    plt.errorbar(
+        [i for i in range(0, 10)],
+        plot_sum.loc[:, "THR"],
+        yerr=yerr,
+        fmt="--",
+        capsize=4,
+    )
     plt.xlabel("Number of stations")
     plt.ylabel("Throughput [Mb/s]")
     # plt.ylim(0, 35)
@@ -156,8 +133,9 @@ def calculate_thr_mse2(csv_name, notes=""):
         va="center",
         wrap=True,
     )
-    plt.savefig("THR_PER_STATION_ERR.pdf")
+    plt.savefig("pdf/THR_PER_STATION_ERR.pdf")
     plt.show()
+
 
 def plot_thr(times_thr):
     times_thr = float("{:.4f}".format(times_thr))
@@ -169,7 +147,7 @@ def plot_thr(times_thr):
     plt.bar(names, values)
     plt.ylabel("Throughput [Mb/s]")
     plt.title("Throughput comparison")
-    plt.savefig("THR_Comparison.pdf")
+    plt.savefig("pdf/THR_Comparison.pdf")
     plt.show()
 
 
@@ -186,9 +164,9 @@ def show_backoffs(csv_name):
     ax = data.iloc[9, :].plot(style=".")
     ax.set_xlabel("Backoff")
     ax.set_ylabel("Number of draws")
-    ax.set_yscale('log')
-    ax.set_xscale('linear')
-    plt.savefig("Backoffs.pdf")
+    ax.set_yscale("log")
+    ax.set_xscale("linear")
+    plt.savefig("pdf/Backoffs.pdf")
     plt.show()
     ranges = [16, 32, 64, 128, 256, 512, 1024]
     merged = {}
@@ -199,10 +177,13 @@ def show_backoffs(csv_name):
     pd_merged = pd.DataFrame.from_dict(merged)
     plt.figure()
     ax = pd_merged.T.plot.bar()
+    ax.set_yscale("log")
     ax.set_xlabel("Backoff")
     ax.set_ylabel("Number of draws")
-    plt.savefig("BackoffsMerged.pdf")
+    ax.legend(["CW Draws"])
+    plt.savefig("pdf/BackoffsMerged.pdf")
     plt.show()
+
 
 # def calculate_mean():
 #     with open("results.txt", "r") as f:
@@ -221,14 +202,15 @@ def show_backoffs(csv_name):
 #         print(frame)
 
 
-if __name__ == "__main__":
-    file = "15-1023-10-1594202254.353538.csv"
+def show_results(file):
     file_mean = f"{file[:-4]}-mean.csv"
-    # calculate_mean_and_std(file)
+    calculate_mean_and_std(file)
     calculate_p_coll_mse(file_mean)
-    calculate_thr_mse2(file_mean)
+    calculate_thr_mse2(file)
     calculate_thr_mse(file_mean)
     plot_thr(t.get_thr(1472))
-    show_backoffs("backoffs.csv")
+    show_backoffs("csv_results/backoffs.csv")
 
-    # calculate_mean()
+
+if __name__ == "__main__":
+    show_results("csv/15-1023-10-1596800033.1341894.csv")
