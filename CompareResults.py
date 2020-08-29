@@ -25,7 +25,7 @@ def calculate_p_coll_mse(csv_name, notes=""):
         mse = mse / len(results_dict.keys())
         new_results[MSE_NAMES[i]] = "{:.2E}".format(mse)
     results = results.append(new_results, ignore_index=True)
-    results.to_csv("results_p_coll.csv", index=False)
+    results.to_csv("csv_results/results_p_coll.csv", index=False)
     styles = ["*--", ".--", "1--", "|--"]
     ax = results.iloc[[0, 1, 2, -1], 0:10].T.plot(style=styles, lw=0.5)
     ax.set_xlabel("Number of stations")
@@ -66,7 +66,7 @@ def calculate_thr_mse(csv_name, notes=""):
         mse = mse / len(results_dict.keys())
         new_results[MSE_NAMES[i]] = "{:.2E}".format(mse)
     results = results.append(new_results, ignore_index=True)
-    results.to_csv("results_thr.csv", index=False)
+    results.to_csv("csv_results/results_thr.csv", index=False)
     # plt.figure()
     ax = results.iloc[[0, 1, -1], 0:10].T.plot(style="--o")
     ax.set_xlabel("Number of stations")
