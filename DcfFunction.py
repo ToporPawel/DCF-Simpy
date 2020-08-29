@@ -10,45 +10,55 @@ from dataclasses import dataclass, field
 from typing import List
 
 colors = [
-        "\033[30m",
-        "\033[32m",
-        "\033[31m",
-        "\033[33m",
-        "\033[34m",
-        "\033[35m",
-        "\033[36m",
-        "\033[37m",
-    ]
+    "\033[30m",
+    "\033[32m",
+    "\033[31m",
+    "\033[33m",
+    "\033[34m",
+    "\033[35m",
+    "\033[36m",
+    "\033[37m",
+]  # colors to distinguish stations in output
 logging.basicConfig(format="%(message)s", level=logging.ERROR)
 
 
-DATA_SIZE = 1472
-CW_MIN = 15
-CW_MAX = 1023
-R_limit = 7
+DATA_SIZE = 1472  # size od paylod in b
+CW_MIN = 15  # min cw window size
+CW_MAX = 1023  # max cw window size
+R_limit = 7  # max count of failed retransmissions before cw reset
 
-SIMULATION_TIME = 100000000
+SIMULATION_TIME = 100000000  # time of simulation in un
 SIMULATION_TIME = 10000
-STATION_RANGE = 10
-SIMS_PER_STATION_NUM = 10
+STATION_RANGE = 10  # max count of station in simulation
+SIMS_PER_STATION_NUM = 10  # runs per station count
 
-big_num = 10000000
-backoffs = {key: [0 for i in range(1, STATION_RANGE + 1)] for key in range(CW_MAX + 1)}
+big_num = 10000000  # some big number for transmitting query preemption
+backoffs = {
+    key: [0 for i in range(1, STATION_RANGE + 1)] for key in range(CW_MAX + 1)
+}  # dict for storing drawn Back Offs
 
 
-def log(station, mes):
+def log(station, mes: str) -> None:
     logging.info(
-        station.col
-        + f"Time: {station.env.now} Station: {station.name} Message: {mes}"
+        f"{station.col}Time: {station.env.now} Station: {station.name} Message: {mes}"
     )
 
 
-class Station(object):
-    def __init__(self, env, name, channel, cw_min=CW_MIN, cw_max=CW_MAX):
-        self.name = name
-        self.env = env
-        self.col = random.choice(colors)
-        self.frame_to_send = None
+class Station:
+    """Class representing """
+
+    def __init__(
+        self,
+        env: simpy.Environment,
+        name: str,
+        channel: dataclass,
+        cw_min: int = CW_MIN,
+        cw_max: int = CW_MAX,
+    ):
+        self.name = name  # name of the station
+        self.env = env  # current environment
+        self.col = random.choice(colors)  # color of output
+        self.frame_to_send = None  #
         self.succeeded_transmissions = 0
         self.failed_transmissions = 0
         self.failed_transmissions_in_row = 0
@@ -218,6 +228,7 @@ class Frame:
 
 
 def run_simulation(number_of_stations, seed):
+    random.seed(seed * 33)
     environment = simpy.Environment()
     channel = Channel(
         simpy.PreemptiveResource(environment, capacity=1),
@@ -236,35 +247,26 @@ def run_simulation(number_of_stations, seed):
         f"FAILED_TRANSMISSIONS: {channel.failed_transmissions}"
         f" SUCCEEDED_TRANSMISSION {channel.succeeded_transmissions}"
     )
-    add_to_results(p_coll, channel, number_of_stations, seed)
+    add_to_results(p_coll, channel, number_of_stations)
 
 
-def add_to_results(p_coll, channel, n, seed):
-    results["TIMESTAMP"].append(time.time())
-    results["CW_MIN"].append(CW_MIN)
-    results["CW_MAX"].append(CW_MAX)
-    results["N_OF_STATIONS"].append(n)
-    results["SEED"].append(seed)
-    results["P_COLL"].append(p_coll)
-    results["THR"].append((channel.bytes_sent * 8) / SIMULATION_TIME)
-    results["FAILED_TRANSMISSIONS"].append(channel.failed_transmissions)
-    results["SUCCEEDED_TRANSMISSIONS"].append(channel.succeeded_transmissions)
+def add_to_results(p_coll, channel, n):
+    results.setdefault("TIMESTAMP", []).append(time.time())
+    results.setdefault("CW_MIN", []).append(CW_MIN)
+    results.setdefault("CW_MAX", []).append(CW_MAX)
+    results.setdefault("N_OF_STATIONS", []).append(n)
+    results.setdefault("SEED", []).append(seed)
+    results.setdefault("P_COLL", []).append(p_coll)
+    results.setdefault("THR", []).append((channel.bytes_sent * 8) / SIMULATION_TIME)
+    results.setdefault("FAILED_TRANSMISSIONS", []).append(channel.failed_transmissions)
+    results.setdefault("SUCCEEDED_TRANSMISSIONS", []).append(
+        channel.succeeded_transmissions
+    )
 
 
 if __name__ == "__main__":
-    results = {
-        "TIMESTAMP": [],
-        "CW_MIN": [],
-        "CW_MAX": [],
-        "N_OF_STATIONS": [],
-        "SEED": [],
-        "P_COLL": [],
-        "THR": [],
-        "FAILED_TRANSMISSIONS": [],
-        "SUCCEEDED_TRANSMISSIONS": [],
-    }
+    results = dict()
     for seed in range(1, SIMS_PER_STATION_NUM + 1):
-        random.seed(seed * 33)
         threads = [
             threading.Thread(target=run_simulation, args=(n, seed * 33,))
             for n in range(1, STATION_RANGE + 1)
@@ -275,9 +277,9 @@ if __name__ == "__main__":
             thread.join()
     time_now = time.time()
     output_file_name = f"csv/{CW_MIN}-{CW_MAX}-{STATION_RANGE}-{time_now}.csv"
-    df = pd.DataFrame(results)
-    df.to_csv(output_file_name, index=False)
-    backoffs = dict(sorted(backoffs.items()))
-    pand = pd.DataFrame(backoffs)
-    pand.to_csv(f"csv_results/{CW_MIN}-{CW_MAX}-{STATION_RANGE}-{time_now}-backoffs.csv", index=False)
+    pd.DataFrame(results).to_csv(output_file_name, index=False)
+    pd.DataFrame(dict(sorted(backoffs.items()))).to_csv(
+        f"csv_results/{CW_MIN}-{CW_MAX}-{STATION_RANGE}-{time_now}-backoffs.csv",
+        index=False,
+    )
     show_results(output_file_name)
