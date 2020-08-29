@@ -1,6 +1,5 @@
 import random
 import simpy
-import Colors
 import logging
 import time
 import pandas as pd
@@ -8,27 +7,36 @@ import threading
 import Times as t
 from CompareResults import show_results
 
-FRAME_LENGTH = 10
+colors = [
+        "\033[30m",
+        "\033[32m",
+        "\033[31m",
+        "\033[33m",
+        "\033[34m",
+        "\033[35m",
+        "\033[36m",
+        "\033[37m",
+    ]
+logging.basicConfig(format="%(message)s", level=logging.INFO)
+
+
 DATA_SIZE = 1472
 CW_MIN = 15
 CW_MAX = 1023
-SIMULATION_TIME = 100000000
 R_limit = 7
 
+SIMULATION_TIME = 100000000
 STATION_RANGE = 10
 SIMS_PER_STATION_NUM = 10
 
 big_num = 10000000
 backoffs = {key: [0 for i in range(1, STATION_RANGE + 1)] for key in range(CW_MAX + 1)}
 
-logging.basicConfig(format="%(message)s", level=logging.ERROR)
-
 
 def log(station, mes):
     logging.info(
         station.col
         + f"Time: {station.env.now} Station: {station.name} Message: {mes}"
-        + Colors.get_normal()
     )
 
 
@@ -55,14 +63,13 @@ class Station(object):
     def __init__(self, env, name, channel, cw_min=CW_MIN, cw_max=CW_MAX):
         self.name = name
         self.env = env
-        self.col = Colors.get_color()
+        self.col = random.choice(colors)
         self.frame_to_send = None
         self.succeeded_transmissions = 0
         self.failed_transmissions = 0
         self.failed_transmissions_in_row = 0
         self.cw_min = cw_min
         self.cw_max = cw_max
-        self.mac_retry_drop = 0
         self.channel = channel
         env.process(self.start())
         self.process = None
@@ -179,7 +186,6 @@ class Station(object):
         self.failed_transmissions_in_row += 1
         log(self, self.channel.failed_transmissions)
         if self.frame_to_send.number_of_retransmissions > R_limit:
-            self.mac_retry_drop += 1
             self.frame_to_send = self.generate_new_frame()
             self.failed_transmissions_in_row = 0
 
@@ -225,7 +231,7 @@ def run_simulation(number_of_stations, seed):
         number_of_stations,
     )
     for i in range(1, number_of_stations + 1):
-        Station(environment, "Station{}".format(i), channel)
+        Station(environment, "Station {}".format(i), channel)
     environment.run(until=SIMULATION_TIME)
     p_coll = "{:.4f}".format(
         channel.failed_transmissions
@@ -278,8 +284,6 @@ if __name__ == "__main__":
     df = pd.DataFrame(results)
     df.to_csv(output_file_name, index=False)
     backoffs = dict(sorted(backoffs.items()))
-    # for key, value in backoffs.items():
-    #     backoffs[key][0] = math.ceil(backoffs[key][0] / SIMS_PER_STATION_NUM)
     pand = pd.DataFrame(backoffs)
     pand.to_csv(f"csv_results/{CW_MIN}-{CW_MAX}-{STATION_RANGE}-{time_now}-backoffs.csv", index=False)
     show_results(output_file_name)
