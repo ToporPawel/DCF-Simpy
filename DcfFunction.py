@@ -4,25 +4,26 @@ import Colors
 import logging
 import time
 import pandas as pd
-import matplotlib.pyplot as plt
 import threading
-import Times as t
-from CompareResults import *
-from sklearn import preprocessing
 
-FRAME_LENGTH = 10
+from CompareResults import *
+
+from CompareResults import calculate_mean_and_std
+
+
 DATA_SIZE = 1472
 CW_MIN = 3
 CW_MAX = 1023
 SIMULATION_TIME = 10000000
-R_limit = 4
+R_limit = 7
+
 
 MIN_STATIONS = 5
 MAX_STATIONS = 5
 SIMS_PER_STATION_NUM = 10
 
-big_num = 10000000
 
+big_num = 1000000000
 
 logging.basicConfig(format="%(message)s", level=logging.ERROR)
 
@@ -33,6 +34,7 @@ def log(station, mes):
         + f"Time: {station.env.now} Station: {station.name} Message: {mes}"
         + Colors.get_normal()
     )
+
 
 class Frame:
     def __init__(self, frame_time, station_name, output_color, env, data_size):
@@ -69,7 +71,6 @@ class Station(object):
         env.process(self.start())
         self.process = None
         self.event = env.event()
-        # self.bytes_sent = 0
 
     def start(self):
         while True:
@@ -81,24 +82,33 @@ class Station(object):
                 was_sent = yield self.env.process(self.send_frame())
 
     def wait_back_off(self):
-        back_off = self.generate_new_back_off(self.failed_transmissions_in_row)
-        while back_off > -1:
+        back_off_time = self.generate_new_back_off_time(
+            self.failed_transmissions_in_row
+        )  # generate the new Back Off time
+        while back_off_time > -1:
             try:
-                with self.channel.tx_lock.request() as req:
+                with self.channel.tx_lock.request() as req:  # wait for the lock/idle channel
                     yield req
-                back_off += t.t_difs
-                log(self, f"Starting to wait backoff: ({back_off})u...")
-                start = self.env.now
-                self.channel.join_back_off(self)
-                yield self.env.timeout(back_off)
+                back_off_time += t.t_difs  # add DIFS time
+                log(self, f"Starting to wait backoff: ({back_off_time})u...")
+                start = self.env.now  # store the current simulation time
+                self.channel.join_back_off(
+                    self
+                )  # join the list off stations which are waiting Back Offs
+                yield self.env.timeout(
+                    back_off_time
+                )  # join the environment action queue
                 log(self, f"Backoff waited, sending frame...")
-                back_off = -1
-                self.channel.leave_back_off(self)
-            except simpy.Interrupt:
+                back_off_time = -1  # leave the loop
+                self.channel.leave_back_off(
+                    self
+                )  # leave the waiting list as Back Off was waited successfully
+            except simpy.Interrupt:  # handle the interruptions from transmitting stations
                 log(self, "Waiting was interrupted, waiting to resume backoff...")
-                back_off -= self.env.now - start
-                back_off -= 9
-                # self.env.timeout(1)
+                back_off_time -= (
+                    self.env.now - start
+                )  # set the Back Off to the remaining one
+                back_off_time -= 9  # simulate the delay of sensing the channel state
 
     def send_frame(self):
         self.channel.join_tx_list(self)
@@ -119,12 +129,10 @@ class Station(object):
                 self.channel.back_off_list.clear()
                 was_sent = self.check_collision()
                 if was_sent:
-                    # log(self, "master")
                     yield self.env.timeout(t.get_ack_frame_time())
                     self.channel.tx_list.clear()
                     self.channel.tx_queue.release(res)
                     return was_sent
-            # log(self, "waiting wck timeout master")
             self.channel.tx_list.clear()
             self.channel.tx_queue.release(res)
             self.channel.tx_queue = simpy.PreemptiveResource(self.env, capacity=1)
@@ -148,10 +156,15 @@ class Station(object):
             self.sent_completed()
             return True
 
-    def generate_new_back_off(self, n):
-        upper_limit = pow(2, n) * (self.cw_min + 1) - 1
-        upper_limit = upper_limit if upper_limit <= self.cw_max else self.cw_max
-        return random.randint(0, upper_limit) * t.t_slot
+    def generate_new_back_off_time(self, failed_transmissions_in_row):
+        upper_limit = (
+            pow(2, failed_transmissions_in_row) * (self.cw_min + 1) - 1
+        )  # define the upper limit basing on  unsuccessful transmissions in the row
+        upper_limit = (
+            upper_limit if upper_limit <= self.cw_max else self.cw_max
+        )  # set upper limit to CW Max if is bigger then this parameter
+        back_off = random.randint(0, upper_limit)  # draw the back off value
+        return back_off * t.t_slot
 
     def generate_new_frame(self):
         # data_size = random.randrange(0, 2304)
@@ -181,14 +194,11 @@ class Station(object):
         self.succeeded_transmissions += 1
         self.failed_transmissions_in_row = 0
         self.channel.bytes_sent += self.frame_to_send.data_size
-        # self.channel.total_frame_time += self.frame_to_send.t_to_send + t.get_ack_frame_time()
-        # self.bytes_sent += self.frame_to_send.data_size
-        # log(self, self.channel.succeeded_transmissions)
         return True
 
 
 class Channel(object):
-    def __init__(self, tx_queue: simpy.PreemptiveResource, env):
+    def __init__(self, tx_queue: simpy.PreemptiveResource, env, n_of_stations):
         self.tx_queue = tx_queue
         self.tx_list = []
         self.back_off_list = []
@@ -196,6 +206,7 @@ class Channel(object):
         self.failed_transmissions = 0
         self.succeeded_transmissions = 0
         self.bytes_sent = 0
+        self.n_of_stations = n_of_stations
 
     def join_back_off(self, station: Station):
         self.back_off_list.append(station)
@@ -209,7 +220,11 @@ class Channel(object):
 
 def run_simulation(number_of_stations, seed, cw_min):
     environment = simpy.Environment()
-    channel = Channel(simpy.PreemptiveResource(environment, capacity=1), environment)
+    channel = Channel(
+        simpy.PreemptiveResource(environment, capacity=1),
+        environment,
+        number_of_stations,
+    )
     for i in range(1, number_of_stations + 1):
         Station(environment, "Station{}".format(i), channel, cw_min=cw_min)
     environment.run(until=SIMULATION_TIME)
@@ -218,7 +233,8 @@ def run_simulation(number_of_stations, seed, cw_min):
         / (channel.failed_transmissions + channel.succeeded_transmissions)
     )
     print(
-        f"SEED = {seed} N={number_of_stations} CW_MIN = {cw_min} CW_MAX = {CW_MAX}  PCOLL: {p_coll} THR: {(channel.bytes_sent*8)/SIMULATION_TIME} "
+        f"SEED = {seed} N={number_of_stations} CW_MIN = {cw_min} CW_MAX = {CW_MAX}  PCOLL: {p_coll} THR:"
+        f" {(channel.bytes_sent*8)/SIMULATION_TIME} "
         f"FAILED_TRANSMISSIONS: {channel.failed_transmissions}"
         f" SUCCEEDED_TRANSMISSION {channel.succeeded_transmissions}"
     )
@@ -232,7 +248,7 @@ def add_to_results(p_coll, channel, n, seed, cw_min):
     results["N_OF_STATIONS"].append(n)
     results["SEED"].append(seed)
     results["P_COLL"].append(p_coll)
-    results["THR"].append((channel.bytes_sent * 8) / (SIMULATION_TIME ))
+    results["THR"].append((channel.bytes_sent * 8) / SIMULATION_TIME)
     results["FAILED_TRANSMISSIONS"].append(channel.failed_transmissions)
     results["SUCCEEDED_TRANSMISSIONS"].append(channel.succeeded_transmissions)
 
@@ -261,10 +277,10 @@ if __name__ == "__main__":
             for thread in threads:
                 thread.join()
     time_now = time.time()
-    output_file_name = f"ChangeCW-{MAX_STATIONS}-{MIN_STATIONS}-{time_now}.csv"
+    output_file_name = f"csv/testChangeCW-{MAX_STATIONS}-{MIN_STATIONS}-{time_now}.csv"
     df = pd.DataFrame(results)
     df.to_csv(output_file_name, index=False)
-    file_mean = calculate_mean_and_std(output_file_name, group_by=["N_OF_STATIONS", "CW_MIN"])
+    file_mean = calculate_mean_and_std(
+        output_file_name, group_by=["N_OF_STATIONS", "CW_MIN"]
+    )
     plot_by_multiple_cw(file_mean)
-    # calculate_p_coll_mse(output_file_name)
-    # calculate_thr_mse(output_file_name)

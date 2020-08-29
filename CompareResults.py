@@ -2,15 +2,18 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import Times as t
+
 from matplotlib.lines import Line2D
+
+import scipy.stats as st
 
 
 plt.close("all")
 MSE_NAMES = {0: "MSE-NS-3", 1: "MSE-AM", 2: "MSE-MS"}
-CIL = 1.96
+
 
 def calculate_p_coll_mse(csv_name, notes=""):
-    results = pd.read_csv("results_p_coll.csv", delimiter=",")
+    results = pd.read_csv("csv_results/results_p_coll.csv", delimiter=",")
     results_dict = results.iloc[0:3, 0:10].to_dict()
     new_results = pd.read_csv(csv_name, delimiter=",").T
     new_results = {
@@ -27,7 +30,8 @@ def calculate_p_coll_mse(csv_name, notes=""):
         new_results[MSE_NAMES[i]] = "{:.2E}".format(mse)
     results = results.append(new_results, ignore_index=True)
     results.to_csv("results_p_coll.csv", index=False)
-    ax = results.iloc[[0, 1, 2, -1], 0:10].T.plot(style="--o")
+    styles = ["*--", ".--", "1--", "|--"]
+    ax = results.iloc[[0, 1, 2, -1], 0:10].T.plot(style=styles, lw=0.5)
     ax.set_xlabel("Number of stations")
     ax.set_ylabel("Collision probability")
     x_ticks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
@@ -45,10 +49,12 @@ def calculate_p_coll_mse(csv_name, notes=""):
         va="center",
         transform=ax.transAxes,
     )
+    plt.savefig("pdf/P_COLL_PER_STATION.pdf")
+    plt.show()
 
 
 def calculate_thr_mse(csv_name, notes=""):
-    results = pd.read_csv("results_thr.csv", delimiter=",")
+    results = pd.read_csv("csv_results/results_thr.csv", delimiter=",")
     results_dict = results.iloc[0:2, 0:10].to_dict()
     new_results = pd.read_csv(csv_name, delimiter=",").T
     new_results = {
@@ -85,41 +91,40 @@ def calculate_thr_mse(csv_name, notes=""):
         va="center",
         transform=ax.transAxes,
     )
+    plt.savefig("pdf/THR_PER_STATION.pdf")
     plt.show()
 
+
 def calculate_thr_mse2(csv_name, notes=""):
-    results = pd.read_csv("results_thr.csv", delimiter=",")
-    results_dict = results.iloc[0:2, 0:10].to_dict()
-    new_results = pd.read_csv(csv_name, delimiter=",").T
-    std = new_results.T["THR_STD"].to_list()
-    new_results = {
-        str(int(pair["N_OF_STATIONS"])): pair["THR"]
-        for pair in new_results.to_dict().values()
-    }
-    ci = []
-    for n in range(len(std)):
-        ci.append(CIL * std[n] / new_results.get(f"{(n + 1)}"))
-    new_results["Name"] = "DCF-SimPy"
-    new_results["Notes"] = notes
-    for i in range(2):
-        mse = 0
-        for key in results_dict.keys():
-            mse += pow(results_dict[key][i] - new_results[key], 2)
-        mse = mse / len(results_dict.keys())
-        new_results[MSE_NAMES[i]] = "{:.2E}".format(mse)
-    results = results.append(new_results, ignore_index=True)
-    results.to_csv("results_thr.csv", index=False)
-    plt.figure()
+    results = pd.read_csv("csv_results/results_thr.csv", delimiter=",")
+    thr_frame = pd.read_csv(csv_name, delimiter=",")
+    thr_frame.drop("TIMESTAMP", axis=1, inplace=True)
+    thr_frame.drop("CW_MIN", axis=1, inplace=True)
+    thr_frame.drop("CW_MAX", axis=1, inplace=True)
+    thr_frame.drop("SEED", axis=1, inplace=True)
+    thr_frame.drop("P_COLL", axis=1, inplace=True)
+    thr_frame.drop("FAILED_TRANSMISSIONS", axis=1, inplace=True)
+    thr_frame.drop("SUCCEEDED_TRANSMISSIONS", axis=1, inplace=True)
+    alpha = 0.05
+    std = thr_frame.groupby("N_OF_STATIONS").std().loc[:, "THR"]
+    n = thr_frame.groupby("N_OF_STATIONS").count().loc[:, "THR"]
+    yerr = std / np.sqrt(n) * st.t.ppf(1 - alpha / 2, n - 1)
+    plot_sum = thr_frame.groupby(["N_OF_STATIONS"]).mean()
     plt.plot(results.iloc[0, 0:10].T, "--o")
     plt.plot(results.iloc[1, 0:10].T, "--o")
-    dcf_res = results.iloc[-1, 0:10].to_dict()
-    plt.errorbar(dcf_res.keys(),dcf_res.values(), yerr=ci, fmt="--")
+    plt.errorbar(
+        [i for i in range(0, 10)],
+        plot_sum.loc[:, "THR"],
+        yerr=yerr,
+        fmt="--",
+        capsize=4,
+    )
     plt.xlabel("Number of stations")
     plt.ylabel("Throughput [Mb/s]")
-    plt.ylim(0, 35)
-    # x_ticks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    # plt.xticks(range(len(x_ticks)))
-    # plt.xticklabels(x_ticks)
+    # plt.ylim(0, 35)
+    # # x_ticks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    # # plt.xticks(range(len(x_ticks)))
+    # # plt.xticklabels(x_ticks)
     plt.legend(results.iloc[[0, 1, -1], 10].tolist())
     plt.text(
         5.7,
@@ -132,7 +137,9 @@ def calculate_thr_mse2(csv_name, notes=""):
         va="center",
         wrap=True,
     )
+    plt.savefig("pdf/THR_PER_STATION_ERR.pdf")
     plt.show()
+
 
 def plot_thr(times_thr):
     times_thr = float("{:.4f}".format(times_thr))
@@ -144,6 +151,7 @@ def plot_thr(times_thr):
     plt.bar(names, values)
     plt.ylabel("Throughput [Mb/s]")
     plt.title("Throughput comparison")
+    plt.savefig("pdf/THR_Comparison.pdf")
     plt.show()
 
 
@@ -158,23 +166,36 @@ def calculate_mean_and_std(csv_name, group_by=None):
 
 
 def plot_by_multiple_cw(csv_name):
-    new_results = pd.read_csv(csv_name, delimiter=",").loc[:, ["N_OF_STATIONS", "THR", "CW_MIN"]]
+    new_results = pd.read_csv(csv_name, delimiter=",").loc[
+        :, ["N_OF_STATIONS", "THR", "CW_MIN"]
+    ]
     # new_results["THR"] = new_results["THR"] / new_results["THR"].max()
     cw = new_results.loc[new_results["N_OF_STATIONS"] == 5]["CW_MIN"].to_list()
     print(cw)
     plt.figure()
     plt.plot(cw, new_results.loc[new_results["N_OF_STATIONS"] == 5]["THR"] / 54, "-bo")
     plt.plot(cw, new_results.loc[new_results["N_OF_STATIONS"] == 10]["THR"] / 54, "-sb")
-    plt.plot(cw, new_results.loc[new_results["N_OF_STATIONS"] == 20]["THR"] / 54, "-bo", fillstyle='none')
-    plt.plot(cw, new_results.loc[new_results["N_OF_STATIONS"] == 50]["THR"] / 54, "-bs", fillstyle='none')
+    plt.plot(
+        cw,
+        new_results.loc[new_results["N_OF_STATIONS"] == 20]["THR"] / 54,
+        "-bo",
+        fillstyle="none",
+    )
+    plt.plot(
+        cw,
+        new_results.loc[new_results["N_OF_STATIONS"] == 50]["THR"] / 54,
+        "-bs",
+        fillstyle="none",
+    )
     # new_results.loc[new_results["N_OF_STATIONS"] == 5].plot()
-    plt.xscale('log')
+    plt.xscale("log")
     plt.xticks(cw, [str(n + 1) for n in cw])
     # print(type(cs))
     plt.legend(["n=5", "n=10", "n=20", "n=50"])
     plt.xlabel("Cw_min size")
     plt.ylabel("Normalized throughput")
     plt.title("Saturation throughput vs cw_min")
+    plt.savefig("pdf/CW_Comparison.pdf")
     plt.show()
     # plt.figure()
     # plt.plot(results.iloc[0, 0:10].T, "--o")
@@ -184,6 +205,32 @@ def plot_by_multiple_cw(csv_name):
     # plt.xlabel("Number of stations")
     # plt.ylabel("Throughput [Mb/s]")
 
+
+def show_backoffs(csv_name):
+    plt.figure()
+    data = pd.read_csv(csv_name, delimiter=",")
+    ax = data.iloc[9, :].plot(style=".")
+    ax.set_xlabel("Backoff")
+    ax.set_ylabel("Number of draws")
+    ax.set_yscale("log")
+    ax.set_xscale("linear")
+    plt.savefig("pdf/Backoffs.pdf")
+    plt.show()
+    ranges = [16, 32, 64, 128, 256, 512, 1024]
+    merged = {}
+    start = 0
+    for cw in ranges:
+        merged[str(cw - 1)] = [sum(data.iloc[9, start:cw])]
+        start = cw
+    pd_merged = pd.DataFrame.from_dict(merged)
+    plt.figure()
+    ax = pd_merged.T.plot.bar()
+    ax.set_yscale("log")
+    ax.set_xlabel("Backoff")
+    ax.set_ylabel("Number of draws")
+    ax.legend(["CW Draws"])
+    plt.savefig("pdf/BackoffsMerged.pdf")
+    plt.show()
 
 
 # def calculate_mean():
@@ -203,13 +250,36 @@ def plot_by_multiple_cw(csv_name):
 #         print(frame)
 
 
+# <<<<<<< HEAD
 if __name__ == "__main__":
     file = "ZmienneCw-final.csv"
+    # ||||||| merged common ancestors
+    # if __name__ == "__main__":
+    #     file = "15-1023-10-1594202254.353538.csv"
+    # =======
+    # def show_results(file):
+    # >>>>>>> master
     file_mean = f"{file[:-4]}-mean.csv"
-    # calculate_mean_and_std(file, group_by=["N_OF_STATIONS", "CW_MIN"])
+    # <<<<<<< HEAD
+    #     # calculate_mean_and_std(file, group_by=["N_OF_STATIONS", "CW_MIN"])
     plot_by_multiple_cw(file_mean)
-    # calculate_p_coll_mse(file)
-    # calculate_thr_mse(file_mean)
-    # plot_thr(t.get_thr())
-
-    # calculate_mean()
+#     # calculate_p_coll_mse(file)
+#     # calculate_thr_mse(file_mean)
+#     # plot_thr(t.get_thr())
+# ||||||| merged common ancestors
+#     # calculate_mean_and_std(file)
+#     # calculate_p_coll_mse(file)
+#     calculate_thr_mse(file_mean)
+#     # plot_thr(t.get_thr())
+# =======
+#     calculate_mean_and_std(file)
+#     calculate_p_coll_mse(file_mean)
+#     calculate_thr_mse2(file)
+#     calculate_thr_mse(file_mean)
+#     plot_thr(t.get_thr(1472))
+#     show_backoffs("csv_results/final.csv")
+# >>>>>>> master
+#
+#
+# if __name__ == "__main__":
+#     show_results("csv/final.csv")

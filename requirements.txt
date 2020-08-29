@@ -1,4 +1,12 @@
 simpy
 pandas
+<<<<<<< HEAD
 matplotlib
 sklearn
+||||||| merged common ancestors
+matplotlib
+=======
+matplotlib
+numpy
+scipy
+>>>>>>> master
