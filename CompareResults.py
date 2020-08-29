@@ -209,8 +209,8 @@ def show_results(file):
     calculate_thr_mse2(file)
     calculate_thr_mse(file_mean)
     plot_thr(t.get_thr(1472))
-    show_backoffs("csv_results/backoffs.csv")
+    show_backoffs("csv_results/final.csv")
 
 
 if __name__ == "__main__":
-    show_results("csv/15-1023-10-1596800033.1341894.csv")
+    show_results("csv/final.csv")

@@ -16,7 +16,7 @@ SIMULATION_TIME = 100000000
 R_limit = 7
 
 STATION_RANGE = 10
-SIMS_PER_STATION_NUM = 5
+SIMS_PER_STATION_NUM = 10
 
 big_num = 10000000
 backoffs = {key: [0 for i in range(1, STATION_RANGE + 1)] for key in range(CW_MAX + 1)}
