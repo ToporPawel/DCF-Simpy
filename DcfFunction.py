@@ -6,6 +6,8 @@ import pandas as pd
 import threading
 import Times as t
 from CompareResults import show_results
+from dataclasses import dataclass, field
+from typing import List
 
 colors = [
         "\033[30m",
@@ -17,7 +19,7 @@ colors = [
         "\033[36m",
         "\033[37m",
     ]
-logging.basicConfig(format="%(message)s", level=logging.INFO)
+logging.basicConfig(format="%(message)s", level=logging.ERROR)
 
 
 DATA_SIZE = 1472
@@ -26,6 +28,7 @@ CW_MAX = 1023
 R_limit = 7
 
 SIMULATION_TIME = 100000000
+SIMULATION_TIME = 10000
 STATION_RANGE = 10
 SIMS_PER_STATION_NUM = 10
 
@@ -38,25 +41,6 @@ def log(station, mes):
         station.col
         + f"Time: {station.env.now} Station: {station.name} Message: {mes}"
     )
-
-
-class Frame:
-    def __init__(self, frame_time, station_name, output_color, env, data_size):
-        self.frame_time = frame_time
-        self.number_of_retransmissions = 0
-        self.t_start = env.now
-        self.t_end = None
-        self.t_to_send = None
-        self.station_name = station_name
-        self.col = output_color
-        self.data_size = data_size
-
-    def __repr__(self):
-        return (
-            self.col
-            + "Frame: start=%d, end=%d, frame_time=%d, retransmissions=%d"
-            % (self.t_start, self.t_end, self.t_to_send, self.number_of_retransmissions)
-        )
 
 
 class Station(object):
@@ -95,7 +79,7 @@ class Station(object):
                 back_off_time += t.t_difs  # add DIFS time
                 log(self, f"Starting to wait backoff: ({back_off_time})u...")
                 start = self.env.now  # store the current simulation time
-                self.channel.join_back_off(
+                self.channel.back_off_list.append(
                     self
                 )  # join the list off stations which are waiting Back Offs
                 yield self.env.timeout(
@@ -103,7 +87,7 @@ class Station(object):
                 )  # join the environment action queue
                 log(self, f"Backoff waited, sending frame...")
                 back_off_time = -1  # leave the loop
-                self.channel.leave_back_off(
+                self.channel.back_off_list.remove(
                     self
                 )  # leave the waiting list as Back Off was waited successfully
             except simpy.Interrupt:  # handle the interruptions from transmitting stations
@@ -114,7 +98,7 @@ class Station(object):
                 back_off_time -= 9  # simulate the delay of sensing the channel state
 
     def send_frame(self):
-        self.channel.join_tx_list(self)
+        self.channel.tx_list.append(self)
         res = self.channel.tx_queue.request(
             priority=(big_num - self.frame_to_send.frame_time)
         )
@@ -176,7 +160,7 @@ class Station(object):
         # data_size = random.randrange(0, 2304)
         data_size = DATA_SIZE
         frame_length = t.get_ppdu_frame_time(data_size)
-        return Frame(frame_length, self.name, self.col, self.env, data_size)
+        return Frame(frame_length, self.name, self.col, data_size, self.env.now)
 
     def sent_failed(self):
         log(self, "There was a collision")
@@ -202,32 +186,42 @@ class Station(object):
         return True
 
 
-class Channel(object):
-    def __init__(self, tx_queue: simpy.PreemptiveResource, env, n_of_stations):
-        self.tx_queue = tx_queue
-        self.tx_list = []
-        self.back_off_list = []
-        self.tx_lock = simpy.Resource(env, capacity=1)
-        self.failed_transmissions = 0
-        self.succeeded_transmissions = 0
-        self.bytes_sent = 0
-        self.n_of_stations = n_of_stations
+@dataclass()
+class Channel:
+    tx_queue: simpy.PreemptiveResource
+    tx_lock: simpy.Resource
+    n_of_stations: int
+    tx_list: List[Station] = field(default_factory=list)
+    back_off_list: List[Station] = field(default_factory=list)
+    failed_transmissions: int = 0
+    succeeded_transmissions: int = 0
+    bytes_sent: int = 0
 
-    def join_back_off(self, station: Station):
-        self.back_off_list.append(station)
 
-    def leave_back_off(self, station: Station):
-        self.back_off_list.remove(station)
+@dataclass()
+class Frame:
+    frame_time: int
+    station_name: str
+    col: str
+    data_size: int
+    t_start: int
+    number_of_retransmissions: int = 0
+    t_end: int = None
+    t_to_send: int = None
 
-    def join_tx_list(self, station: Station):
-        self.tx_list.append(station)
+    def __repr__(self):
+        return (
+            self.col
+            + "Frame: start=%d, end=%d, frame_time=%d, retransmissions=%d"
+            % (self.t_start, self.t_end, self.t_to_send, self.number_of_retransmissions)
+        )
 
 
 def run_simulation(number_of_stations, seed):
     environment = simpy.Environment()
     channel = Channel(
         simpy.PreemptiveResource(environment, capacity=1),
-        environment,
+        simpy.Resource(environment, capacity=1),
         number_of_stations,
     )
     for i in range(1, number_of_stations + 1):
