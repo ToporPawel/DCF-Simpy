@@ -14,7 +14,7 @@ from CompareResults import calculate_mean_and_std
 DATA_SIZE = 1472
 CW_MIN = 3
 CW_MAX = 1023
-SIMULATION_TIME = 10000000
+SIMULATION_TIME = 100000000
 R_limit = 7
 
 
