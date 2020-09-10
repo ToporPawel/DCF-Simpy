@@ -108,45 +108,66 @@ class Station:
                 back_off_time -= 9  # simulate the delay of sensing the channel state
 
     def send_frame(self):
-        self.channel.tx_list.append(self)
-        res = self.channel.tx_queue.request(
+        self.channel.tx_list.append(self)  # add station to currently transmitting list
+        res = self.channel.tx_queue.request(  # create request basing on this station frame length
             priority=(big_num - self.frame_to_send.frame_time)
         )
         try:
-            result = yield res | self.env.timeout(0)
-            if res not in result:
+            result = yield res | self.env.timeout(
+                0
+            )  # try to hold transmitting lock(station with the longest frame will get this)
+            if (
+                res not in result
+            ):  # check if this station got lock, if not just wait you frame time
                 raise simpy.Interrupt("There is a longer frame...")
-            with self.channel.tx_lock.request() as lock:
+            with self.channel.tx_lock.request() as lock:  # this station has the longest frame so hold the lock
                 yield lock
                 log(self, self.channel.back_off_list)
-                for station in self.channel.back_off_list:
+                for (
+                    station
+                ) in (
+                    self.channel.back_off_list
+                ):  # stop all station which are waiting backoff as channel is not idle
                     station.process.interrupt()
                 log(self, self.frame_to_send.frame_time)
-                yield self.env.timeout(self.frame_to_send.frame_time)
-                self.channel.back_off_list.clear()
-                was_sent = self.check_collision()
-                if was_sent:
-                    yield self.env.timeout(t.get_ack_frame_time())
-                    self.channel.tx_list.clear()
-                    self.channel.tx_queue.release(res)
-                    return was_sent
-            self.channel.tx_list.clear()
-            self.channel.tx_queue.release(res)
-            self.channel.tx_queue = simpy.PreemptiveResource(self.env, capacity=1)
-            yield self.env.timeout(t.get_ack_timeout())
-            return was_sent
-        except simpy.Interrupt:
+                yield self.env.timeout(
+                    self.frame_to_send.frame_time
+                )  # wait this station frame time
+                self.channel.back_off_list.clear()  # channel idle, clear backoff waiting list
+                was_sent = self.check_collision()  # check if collision occurred
+                if was_sent:  # transmission successful
+                    yield self.env.timeout(
+                        t.t_sifs + t.get_ack_frame_time()
+                    )  # wait ack
+                    self.channel.tx_list.clear()  # clear transmitting list
+                    self.channel.tx_queue.release(res)  # leave the transmitting queue
+                    return True
+            # there was collision
+            self.channel.tx_list.clear()  # clear transmitting list
+            self.channel.tx_queue.release(res)  # leave the transmitting queue
+            self.channel.tx_queue = simpy.PreemptiveResource(
+                self.env, capacity=1
+            )  # create new empty transmitting queue
+            yield self.env.timeout(
+                t.get_ack_timeout()
+            )  # simulate ack timeout after failed transmission
+            return False
+        except simpy.Interrupt:  # this station does not have the longest frame, waiting frame time
             yield self.env.timeout(self.frame_to_send.frame_time)
         was_sent = self.check_collision()
-        if was_sent:
-            yield self.env.timeout(t.t_sifs + t.get_ack_frame_time())
+        if was_sent:  # check if collision occurred
+            yield self.env.timeout(t.t_sifs + t.get_ack_frame_time())  # wait ack
         else:
             log(self, "waiting wck timeout slave")
-            yield self.env.timeout(t.get_ack_timeout())
+            yield self.env.timeout(
+                t.get_ack_timeout()
+            )  # simulate ack timeout after failed transmission
         return was_sent
 
-    def check_collision(self):
-        if len(self.channel.tx_list) > 1:
+    def check_collision(self):  # check if the collision occurred
+        if (
+            len(self.channel.tx_list) > 1
+        ):  # check if there was more then one station transmitting
             self.sent_failed()
             return False
         else:
