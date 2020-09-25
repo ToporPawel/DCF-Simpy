@@ -26,7 +26,7 @@ def calculate_p_coll_mse(csv_name, notes=""):
         new_results[MSE_NAMES[i]] = "{:.2E}".format(mse)
     results = results.append(new_results, ignore_index=True)
     results.to_csv("csv_results/results_p_coll.csv", index=False)
-    styles = ["*--", ".--", "1--", "|--"]
+    styles = ["*--", ".--", "1--", "|--", ".--"]
     ax = results.iloc[[0, 1, 2, 3, -1], 0:10].T.plot(style=styles, lw=0.7, ms=8)
     ax.set_xlabel("Number of stations")
     ax.set_ylabel("Collision probability")
@@ -151,7 +151,7 @@ def calculate_thr_mse_stderr(csv_name, notes=""):
     # # # x_ticks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     # # # plt.xticks(range(len(x_ticks)))
     # # # plt.xticklabels(x_ticks)
-    # plt.legend(results.iloc[[0, 1, 2, -1], 10].tolist())
+    plt.legend(results.iloc[[2, -1, 0, 1], 10].tolist())
     # # plt.text(
     # #     5.7,
     # #     3.4,
@@ -170,13 +170,14 @@ def calculate_thr_mse_stderr(csv_name, notes=""):
 def plot_thr(times_thr):
     times_thr = float("{:.4f}".format(times_thr))
     matlab_thr = 34.6014
-    ns_3_thr = 36.1225
-    names = ["Analytical model", "Times-DCF", "ns-3"]
-    values = [matlab_thr, times_thr, ns_3_thr]
+    ns_3_30_1_thr = 36.1225
+    ns_3_31_thr = 36.1296
+    wifi_airtime_calculator = 35.0
+    names = ["Analytical model", "DCF-SimPy", "Wi-Fi AirTime", "ns-3.30.1", "ns-3.31"]
+    values = [matlab_thr, times_thr, wifi_airtime_calculator, ns_3_30_1_thr, ns_3_31_thr]
     plt.figure()
     plt.bar(names, values)
     plt.ylabel("Throughput [Mb/s]")
-    plt.title("Throughput comparison")
     plt.savefig("pdf/THR_Comparison.pdf")
     plt.show()
 
@@ -198,7 +199,7 @@ def show_backoffs(csv_name):
         merged[f"[{start},{cw - 1}]"] = [sum(data.iloc[9, start:cw])]
         start = cw
     ax = data.iloc[9, :].plot(style=".", rot=90)
-    ax.set_xlabel("Backoff")
+    ax.set_xlabel("Backoff value")
     ax.set_ylabel("Frequency")
     ax.set_yscale("log")
     ax.set_xscale("linear")
@@ -208,7 +209,7 @@ def show_backoffs(csv_name):
     plt.figure()
     ax = pd_merged.T.plot.bar(legend=False)
     ax.set_yscale("log")
-    ax.set_xlabel("Backoff")
+    ax.set_xlabel("Backoff range")
     ax.set_ylabel("Frequency")
     plt.savefig("pdf/BackoffsMerged.pdf")
     plt.show()

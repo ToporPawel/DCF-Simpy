@@ -58,5 +58,5 @@ def get_thr(payload):
     return (payload * 8) / (get_ppdu_frame_time(payload) + get_ack_frame_time() + t_difs)
 
 
-# print(f"Tx time: {get_ppdu_frame_time(1472) + get_ack_frame_time()} u, Tx speed: {get_thr(1472)} Mb/u")
+print(f"Tx time: {t_difs + get_ppdu_frame_time(1472) + get_ack_frame_time()} u, Tx speed: {get_thr(1472)} Mb/u")
 # print(get_ppdu_frame_time(1472), get_ack_timeout(), get_ack_frame_time())
