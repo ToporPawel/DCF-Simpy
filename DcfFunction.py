@@ -8,6 +8,8 @@ import Times as t
 from CompareResults import show_results
 from dataclasses import dataclass, field
 from typing import List
+from datetime import datetime
+
 
 colors = [
     "\033[30m",
@@ -19,18 +21,18 @@ colors = [
     "\033[36m",
     "\033[37m",
 ]  # colors to distinguish stations in output
-logging.basicConfig(format="%(message)s", level=logging.ERROR)
+logging.basicConfig(format="%(message)s", level=logging.INFO)
 
 
 DATA_SIZE = 1472  # size od paylod in b
-CW_MIN = 15  # min cw window size
-CW_MAX = 1023  # max cw window size
+CW_MIN = 0  # min cw window size
+CW_MAX = 0  # max cw window size
 R_limit = 7  # max count of failed retransmissions before cw reset
 
 SIMULATION_TIME = 100000000  # time of simulation in un
 SIMULATION_TIME = 10000
-STATION_RANGE = 10  # max count of station in simulation
-SIMS_PER_STATION_NUM = 10  # runs per station count
+STATION_RANGE = 1  # max count of station in simulation
+SIMS_PER_STATION_NUM = 1  # runs per station count
 
 big_num = 10000000  # some big number for transmitting query preemption
 backoffs = {
@@ -45,8 +47,6 @@ def log(station, mes: str) -> None:
 
 
 class Station:
-    """Class representing """
-
     def __init__(
         self,
         env: simpy.Environment,
@@ -58,16 +58,17 @@ class Station:
         self.name = name  # name of the station
         self.env = env  # current environment
         self.col = random.choice(colors)  # color of output
-        self.frame_to_send = None  #
-        self.succeeded_transmissions = 0
-        self.failed_transmissions = 0
-        self.failed_transmissions_in_row = 0
-        self.cw_min = cw_min
-        self.cw_max = cw_max
-        self.channel = channel
-        env.process(self.start())
-        self.process = None
-        self.event = env.event()
+        self.frame_to_send = None  # the frame object which is next to send
+        self.succeeded_transmissions = 0  # all succeeded transmissions for station
+        self.failed_transmissions = 0  # all failed transmissions for station
+        self.failed_transmissions_in_row = (
+            0  # all failed transmissions for station without succeeded transmissions
+        )
+        self.cw_min = cw_min  # cw min parameter value
+        self.cw_max = cw_max  # cw max parameter value
+        self.channel = channel  # channel object
+        env.process(self.start())  # simulation process
+        self.process = None  # waiting back off process
 
     def start(self):
         while True:
@@ -219,26 +220,30 @@ class Station:
 
 @dataclass()
 class Channel:
-    tx_queue: simpy.PreemptiveResource
-    tx_lock: simpy.Resource
-    n_of_stations: int
-    tx_list: List[Station] = field(default_factory=list)
-    back_off_list: List[Station] = field(default_factory=list)
-    failed_transmissions: int = 0
-    succeeded_transmissions: int = 0
-    bytes_sent: int = 0
+    tx_queue: simpy.PreemptiveResource  # lock for the stations with the longest frame to transmit
+    tx_lock: simpy.Resource  # channel lock (locked when there is ongoing transmission)
+    n_of_stations: int  # number of transmitting stations in the channel
+    tx_list: List[Station] = field(
+        default_factory=list
+    )  # transmitting stations in the channel
+    back_off_list: List[Station] = field(
+        default_factory=list
+    )  # stations in backoff phase
+    failed_transmissions: int = 0  # total failed transmissions
+    succeeded_transmissions: int = 0  # total succeeded transmissions
+    bytes_sent: int = 0  # total bytes sent
 
 
 @dataclass()
 class Frame:
-    frame_time: int
-    station_name: str
-    col: str
-    data_size: int
-    t_start: int
-    number_of_retransmissions: int = 0
-    t_end: int = None
-    t_to_send: int = None
+    frame_time: int  # time of the frame
+    station_name: str  # name of the owning it station
+    col: str  # output color
+    data_size: int  # payload size
+    t_start: int  # generation time
+    number_of_retransmissions: int = 0  # retransmissions count
+    t_end: int = None  # sent time
+    t_to_send: int = None  # how much time it took to sent successfully
 
     def __repr__(self):
         return (
@@ -272,7 +277,7 @@ def run_simulation(number_of_stations, seed):
 
 
 def add_to_results(p_coll, channel, n):
-    results.setdefault("TIMESTAMP", []).append(time.time())
+    results.setdefault("TIMESTAMP", []).append(datetime.fromtimestamp(time.time()))
     results.setdefault("CW_MIN", []).append(CW_MIN)
     results.setdefault("CW_MAX", []).append(CW_MAX)
     results.setdefault("N_OF_STATIONS", []).append(n)
@@ -296,7 +301,7 @@ if __name__ == "__main__":
             thread.start()
         for thread in threads:
             thread.join()
-    time_now = time.time()
+    time_now = datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d-%H-%M-%s")
     output_file_name = f"csv/{CW_MIN}-{CW_MAX}-{STATION_RANGE}-{time_now}.csv"
     pd.DataFrame(results).to_csv(output_file_name, index=False)
     pd.DataFrame(dict(sorted(backoffs.items()))).to_csv(

@@ -32,7 +32,9 @@ def get_ppdu_frame_time(payload):
     # MacFrame
     mac_frame = mac_overhead + msdu  # [b]
     # PPDU Padding
-    ppdu_padding = math.ceil((_overhead + mac_frame) / n_data) * n_data - (_overhead + mac_frame)
+    ppdu_padding = math.ceil((_overhead + mac_frame) / n_data) * n_data - (
+        _overhead + mac_frame
+    )
     # CPSDU Frame
     cpsdu = _overhead + mac_frame + ppdu_padding  # [b]
     # PPDU Frame
@@ -55,8 +57,14 @@ def get_ack_timeout():
 
 
 def get_thr(payload):
-    return (payload * 8) / (get_ppdu_frame_time(payload) + get_ack_frame_time() + t_difs)
+    return (payload * 8) / (
+        get_ppdu_frame_time(payload) + get_ack_frame_time() + t_difs
+    )
 
 
-print(f"Tx time: {t_difs + get_ppdu_frame_time(1472) + get_ack_frame_time()} u, Tx speed: {get_thr(1472)} Mb/u")
+print(
+    f"Tx time: {t_difs + get_ppdu_frame_time(1472) + get_ack_frame_time()} u, Tx speed: {get_thr(1472)} Mb/u"
+)
+print(get_ppdu_frame_time(1472))
+print(get_ack_frame_time() - t_sifs)
 # print(get_ppdu_frame_time(1472), get_ack_timeout(), get_ack_frame_time())

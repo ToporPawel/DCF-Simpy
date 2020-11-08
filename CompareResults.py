@@ -5,12 +5,12 @@ import Times as t
 import scipy.stats as st
 
 plt.close("all")
-MSE_NAMES = {0: "MSE-NS-3", 1: "MSE-AM", 2: "MSE-MS"}
+MSE_NAMES = {0: "MSE-NS-3.30.1",1: "MSE-NS-3.31", 2: "MSE-AM", 3: "MSE-MS"}
 
 
 def calculate_p_coll_mse(csv_name, notes=""):
     results = pd.read_csv("csv_results/results_p_coll.csv", delimiter=",")
-    results_dict = results.iloc[0:4, 0:10].to_dict()
+    results_dict = results.iloc[0:5, 0:10].to_dict()
     new_results = pd.read_csv(csv_name, delimiter=",").T
     new_results = {
         str(int(pair["N_OF_STATIONS"])): pair["P_COLL"]
@@ -18,7 +18,7 @@ def calculate_p_coll_mse(csv_name, notes=""):
     }
     new_results["Name"] = "DCF-SimPy"
     new_results["Notes"] = notes
-    for i in range(3):
+    for i in range(4):
         mse = 0
         for key in results_dict.keys():
             mse += pow(results_dict[key][i] - new_results[key], 2)
@@ -34,27 +34,18 @@ def calculate_p_coll_mse(csv_name, notes=""):
     ax.set_xticks(range(len(x_ticks)))
     ax.set_xticklabels(x_ticks)
     ax.legend(results.iloc[[0, 1, 2, 3, -1], 10].tolist())
-    print("\ncalculate_p_coll_mse\nMSE for DCF-SimPy vs:\nns-3: {}\nAnalitical model: {}\nMatlab simulation: {}".format(
-            *results.iloc[-1, 11:14].tolist()
-        ))
-    # ax.text(
-    #     0.58,
-    #     0.13,
-    #     "MSE for DCF-SimPy vs:\nns-3: {}\nAnalitical model: {}\nMatlab simulation: {}".format(
-    #         *results.iloc[-1, 11:14].tolist()
-    #     ),
-    #     bbox={"facecolor": "none", "pad": 10, "edgecolor": "grey"},
-    #     ha="left",
-    #     va="center",
-    #     transform=ax.transAxes,
-    # )
+    print(
+        "\ncalculate_p_coll_mse\nMSE for DCF-SimPy vs:\nns-3.30.1: {}\nns-3.31: {}\nAnalitical model: {}\nMatlab simulation: {}".format(
+            *results.iloc[-1, 11:15].tolist()
+        )
+    )
     plt.savefig("pdf/P_COLL_PER_STATION.pdf")
     plt.show()
 
 
 def calculate_thr_mse(csv_name, notes=""):
     results = pd.read_csv("csv_results/results_thr.csv", delimiter=",")
-    results_dict = results.iloc[0:3, 0:10].to_dict()
+    results_dict = results.iloc[0:4, 0:10].to_dict()
     new_results = pd.read_csv(csv_name, delimiter=",").T
     new_results = {
         str(int(pair["N_OF_STATIONS"])): pair["THR"]
@@ -62,7 +53,8 @@ def calculate_thr_mse(csv_name, notes=""):
     }
     new_results["Name"] = "DCF-SimPy"
     new_results["Notes"] = notes
-    for i in range(2):
+
+    for i in range(3):
         mse = 0
         for key in results_dict.keys():
             mse += pow(results_dict[key][i] - new_results[key], 2)
@@ -70,7 +62,7 @@ def calculate_thr_mse(csv_name, notes=""):
         new_results[MSE_NAMES[i]] = "{:.2E}".format(mse)
     results = results.append(new_results, ignore_index=True)
     results.to_csv("csv_results/results_thr.csv", index=False)
-    # plt.figure()
+    plt.figure()
     ax = results.iloc[[0, 1, 2, -1], 0:10].T.plot(style="--o")
     ax.set_xlabel("Number of stations")
     ax.set_ylabel("Throughput [Mb/s]")
@@ -79,20 +71,11 @@ def calculate_thr_mse(csv_name, notes=""):
     ax.set_xticks(range(len(x_ticks)))
     ax.set_xticklabels(x_ticks)
     ax.legend(results.iloc[[0, 1, 2, -1], 10].tolist())
-    print("\ncalculate_thr_mse\nMSE for DCF-SimPy vs:\nns-3: {}\nAnalitical model: {}".format(
-            *results.iloc[-1, 11:13].tolist()
-        ))
-    # ax.text(
-    #     0.60,
-    #     0.11,
-    #     "MSE for DCF-SimPy vs:\nns-3: {}\nAnalitical model: {}".format(
-    #         *results.iloc[-1, 11:13].tolist()
-    #     ),
-    #     bbox={"facecolor": "none", "pad": 10, "edgecolor": "grey"},
-    #     ha="left",
-    #     va="center",
-    #     transform=ax.transAxes,
-    # )
+    print(
+        "\ncalculate_thr_mse\nMSE for DCF-SimPy vs:\nns-3.30.1: {}\nns-3.31: {}\nAnalitical model: {}".format(
+            *results.iloc[-1, 11:14].tolist()
+        )
+    )
     plt.savefig("pdf/THR_PER_STATION.pdf")
     plt.show()
 
@@ -119,9 +102,11 @@ def calculate_thr_mse_stderr(csv_name, notes=""):
         fmt="--",
         capsize=4,
     )
-    ns_3_30_1_results = pd.read_csv("csv_results/ns-3.30.1.csv", delimiter=",", header=None).T
-    std = ns_3_30_1_results.std(axis = 0, skipna = True)
-    n = ns_3_30_1_results.count(axis = 0)
+    ns_3_30_1_results = pd.read_csv(
+        "csv_results/ns-3.30.1.csv", delimiter=",", header=None
+    ).T
+    std = ns_3_30_1_results.std(axis=0, skipna=True)
+    n = ns_3_30_1_results.count(axis=0)
     ns_3_30_1_results_mean = ns_3_30_1_results.mean(axis=0)
     yerr = std / np.sqrt(n) * st.t.ppf(1 - alpha / 2, n - 1)
     plt.errorbar(
@@ -131,17 +116,15 @@ def calculate_thr_mse_stderr(csv_name, notes=""):
         fmt="--",
         capsize=4,
     )
-    ns_3_31_results = pd.read_csv("csv_results/ns-3.31.csv", delimiter=",", header=None).T
-    std = ns_3_31_results.std(axis = 0, skipna = True)
-    n = ns_3_31_results.count(axis = 0)
+    ns_3_31_results = pd.read_csv(
+        "csv_results/ns-3.31.csv", delimiter=",", header=None
+    ).T
+    std = ns_3_31_results.std(axis=0, skipna=True)
+    n = ns_3_31_results.count(axis=0)
     ns_3_31_results_mean = ns_3_31_results.mean(axis=0)
     yerr = std / np.sqrt(n) * st.t.ppf(1 - alpha / 2, n - 1)
     plt.errorbar(
-        [i for i in range(0, 10)],
-        ns_3_31_results_mean,
-        yerr=yerr,
-        fmt="--",
-        capsize=4,
+        [i for i in range(0, 10)], ns_3_31_results_mean, yerr=yerr, fmt="--", capsize=4,
     )
     plt.plot(results.iloc[2, 0:10].T, "--o")
 
@@ -152,17 +135,6 @@ def calculate_thr_mse_stderr(csv_name, notes=""):
     # # # plt.xticks(range(len(x_ticks)))
     # # # plt.xticklabels(x_ticks)
     plt.legend(results.iloc[[2, -1, 0, 1], 10].tolist())
-    # # plt.text(
-    # #     5.7,
-    # #     3.4,
-    # #     "MSE for DCF-SimPy vs:\nns-3: {}\nAnalitical model: {}".format(
-    # #         *results.iloc[-1, 11:13].tolist()
-    # #     ),
-    # #     bbox={"facecolor": "none", "pad": 10, "edgecolor": "grey"},
-    # #     ha="left",
-    # #     va="center",
-    # #     wrap=True,
-    # # )
     plt.savefig("pdf/THR_PER_STATION_ERR.pdf")
     plt.show()
 
@@ -174,10 +146,17 @@ def plot_thr(times_thr):
     ns_3_31_thr = 36.1296
     wifi_airtime_calculator = 35.0
     names = ["Analytical model", "DCF-SimPy", "Wi-Fi AirTime", "ns-3.30.1", "ns-3.31"]
-    values = [matlab_thr, times_thr, wifi_airtime_calculator, ns_3_30_1_thr, ns_3_31_thr]
+    values = [
+        matlab_thr,
+        times_thr,
+        wifi_airtime_calculator,
+        ns_3_30_1_thr,
+        ns_3_31_thr,
+    ]
     plt.figure()
     plt.bar(names, values)
     plt.ylabel("Throughput [Mb/s]")
+    plt.xticks(rotation=10)
     plt.savefig("pdf/THR_Comparison.pdf")
     plt.show()
 
