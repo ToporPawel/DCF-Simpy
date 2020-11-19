@@ -21,18 +21,18 @@ colors = [
     "\033[36m",
     "\033[37m",
 ]  # colors to distinguish stations in output
-logging.basicConfig(format="%(message)s", level=logging.INFO)
+logging.basicConfig(format="%(message)s", level=logging.ERROR)
 
 
-DATA_SIZE = 1472  # size od paylod in b
-CW_MIN = 0  # min cw window size
-CW_MAX = 0  # max cw window size
+DATA_SIZE = 1472  # size od payload in b
+CW_MIN = 15  # min cw window size
+CW_MAX = 1023  # max cw window size
 R_limit = 7  # max count of failed retransmissions before cw reset
 
 SIMULATION_TIME = 100000000  # time of simulation in un
-SIMULATION_TIME = 10000
-STATION_RANGE = 1  # max count of station in simulation
-SIMS_PER_STATION_NUM = 1  # runs per station count
+# SIMULATION_TIME = 10000
+STATION_RANGE = 10  # max count of station in simulation
+SIMS_PER_STATION_NUM = 10  # runs per station count
 
 big_num = 10000000  # some big number for transmitting query preemption
 backoffs = {

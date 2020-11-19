@@ -6,10 +6,11 @@ import scipy.stats as st
 
 plt.close("all")
 MSE_NAMES = {0: "MSE-NS-3.30.1",1: "MSE-NS-3.31", 2: "MSE-AM", 3: "MSE-MS"}
-
+results_thr = "csv_results/results_thr-24.csv"
+results_pcoll = "csv_results/results_p_coll-24.csv"
 
 def calculate_p_coll_mse(csv_name, notes=""):
-    results = pd.read_csv("csv_results/results_p_coll.csv", delimiter=",")
+    results = pd.read_csv(results_pcoll, delimiter=",")
     results_dict = results.iloc[0:5, 0:10].to_dict()
     new_results = pd.read_csv(csv_name, delimiter=",").T
     new_results = {
@@ -25,7 +26,7 @@ def calculate_p_coll_mse(csv_name, notes=""):
         mse = mse / len(results_dict.keys())
         new_results[MSE_NAMES[i]] = "{:.2E}".format(mse)
     results = results.append(new_results, ignore_index=True)
-    results.to_csv("csv_results/results_p_coll.csv", index=False)
+    results.to_csv(results_pcoll, index=False)
     styles = ["*--", ".--", "1--", "|--", ".--"]
     ax = results.iloc[[0, 1, 2, 3, -1], 0:10].T.plot(style=styles, lw=0.7, ms=8)
     ax.set_xlabel("Number of stations")
@@ -44,7 +45,7 @@ def calculate_p_coll_mse(csv_name, notes=""):
 
 
 def calculate_thr_mse(csv_name, notes=""):
-    results = pd.read_csv("csv_results/results_thr.csv", delimiter=",")
+    results = pd.read_csv(results_thr, delimiter=",")
     results_dict = results.iloc[0:4, 0:10].to_dict()
     new_results = pd.read_csv(csv_name, delimiter=",").T
     new_results = {
@@ -61,7 +62,7 @@ def calculate_thr_mse(csv_name, notes=""):
         mse = mse / len(results_dict.keys())
         new_results[MSE_NAMES[i]] = "{:.2E}".format(mse)
     results = results.append(new_results, ignore_index=True)
-    results.to_csv("csv_results/results_thr.csv", index=False)
+    results.to_csv(results_thr, index=False)
     plt.figure()
     ax = results.iloc[[0, 1, 2, -1], 0:10].T.plot(style="--o")
     ax.set_xlabel("Number of stations")
@@ -81,7 +82,7 @@ def calculate_thr_mse(csv_name, notes=""):
 
 
 def calculate_thr_mse_stderr(csv_name, notes=""):
-    results = pd.read_csv("csv_results/results_thr.csv", delimiter=",")
+    results = pd.read_csv(results_thr, delimiter=",")
     dcf_results = pd.read_csv(csv_name, delimiter=",")
     dcf_results.drop("TIMESTAMP", axis=1, inplace=True)
     dcf_results.drop("CW_MIN", axis=1, inplace=True)
@@ -141,10 +142,12 @@ def calculate_thr_mse_stderr(csv_name, notes=""):
 
 def plot_thr(times_thr):
     times_thr = float("{:.4f}".format(times_thr))
-    matlab_thr = 34.6014
+    # matlab_thr = 34.6014
+    matlab_thr = 37.0800
     ns_3_30_1_thr = 36.1225
     ns_3_31_thr = 36.1296
-    wifi_airtime_calculator = 35.0
+    # wifi_airtime_calculator = 35.0
+    wifi_airtime_calculator = 37.0
     names = ["Analytical model", "DCF-SimPy", "Wi-Fi AirTime", "ns-3.30.1", "ns-3.31"]
     values = [
         matlab_thr,
@@ -222,4 +225,5 @@ def show_results(file):
 
 
 if __name__ == "__main__":
-    show_results("csv/final.csv")
+    # show_results("csv/final.csv")
+    show_results("csv/final-24.csv")
