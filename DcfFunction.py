@@ -29,10 +29,10 @@ CW_MIN = 15  # min cw window size
 CW_MAX = 1023  # max cw window size
 R_limit = 7  # max count of failed retransmissions before cw reset
 
-SIMULATION_TIME = 100000000  # time of simulation in un
+SIMULATION_TIME = 10000000  # time of simulation in un
 # SIMULATION_TIME = 10000
 STATION_RANGE = 10  # max count of station in simulation
-SIMS_PER_STATION_NUM = 10  # runs per station count
+SIMS_PER_STATION_NUM = 5  # runs per station count
 
 big_num = 10000000  # some big number for transmitting query preemption
 backoffs = {
@@ -52,6 +52,7 @@ class Station:
         env: simpy.Environment,
         name: str,
         channel: dataclass,
+        payload: int,
         cw_min: int = CW_MIN,
         cw_max: int = CW_MAX,
     ):
@@ -64,6 +65,7 @@ class Station:
         self.failed_transmissions_in_row = (
             0  # all failed transmissions for station without succeeded transmissions
         )
+        self.payload = payload
         self.cw_min = cw_min  # cw min parameter value
         self.cw_max = cw_max  # cw max parameter value
         self.channel = channel  # channel object
@@ -190,7 +192,7 @@ class Station:
 
     def generate_new_frame(self):
         # data_size = random.randrange(0, 2304)
-        data_size = DATA_SIZE
+        data_size = self.payload
         frame_length = t.get_ppdu_frame_time(data_size)
         return Frame(frame_length, self.name, self.col, data_size, self.env.now)
 
@@ -253,7 +255,7 @@ class Frame:
         )
 
 
-def run_simulation(number_of_stations, seed):
+def run_simulation(number_of_stations, seed, payload):
     random.seed(seed * 33)
     environment = simpy.Environment()
     channel = Channel(
@@ -262,7 +264,7 @@ def run_simulation(number_of_stations, seed):
         number_of_stations,
     )
     for i in range(1, number_of_stations + 1):
-        Station(environment, "Station {}".format(i), channel)
+        Station(environment, "Station {}".format(i), channel, payload)
     environment.run(until=SIMULATION_TIME)
     p_coll = "{:.4f}".format(
         channel.failed_transmissions
@@ -271,12 +273,12 @@ def run_simulation(number_of_stations, seed):
     print(
         f"SEED = {seed} N={number_of_stations} CW_MIN = {CW_MIN} CW_MAX = {CW_MAX}  PCOLL: {p_coll} THR: {(channel.bytes_sent*8)/SIMULATION_TIME} "
         f"FAILED_TRANSMISSIONS: {channel.failed_transmissions}"
-        f" SUCCEEDED_TRANSMISSION {channel.succeeded_transmissions}"
+        f" SUCCEEDED_TRANSMISSION {channel.succeeded_transmissions}  PAYLOAD {payload}"
     )
-    add_to_results(p_coll, channel, number_of_stations)
+    add_to_results(p_coll, channel, number_of_stations, payload)
 
 
-def add_to_results(p_coll, channel, n):
+def add_to_results(p_coll, channel, n, payload):
     results.setdefault("TIMESTAMP", []).append(datetime.fromtimestamp(time.time()))
     results.setdefault("CW_MIN", []).append(CW_MIN)
     results.setdefault("CW_MAX", []).append(CW_MAX)
@@ -288,24 +290,27 @@ def add_to_results(p_coll, channel, n):
     results.setdefault("SUCCEEDED_TRANSMISSIONS", []).append(
         channel.succeeded_transmissions
     )
+    results.setdefault("PAYLOAD", []).append(
+        payload
+    )
 
 
 if __name__ == "__main__":
     results = dict()
     for seed in range(1, SIMS_PER_STATION_NUM + 1):
         threads = [
-            threading.Thread(target=run_simulation, args=(n, seed * 33,))
-            for n in range(1, STATION_RANGE + 1)
+            threading.Thread(target=run_simulation, args=(10, seed * 33, payload))
+            for payload in range(100, 2001, 100)
         ]
         for thread in threads:
             thread.start()
         for thread in threads:
             thread.join()
     time_now = datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d-%H-%M-%s")
-    output_file_name = f"csv/{CW_MIN}-{CW_MAX}-{STATION_RANGE}-{time_now}.csv"
+    output_file_name = f"csv/different-payload-{CW_MIN}-{CW_MAX}-{STATION_RANGE}-{time_now}.csv"
     pd.DataFrame(results).to_csv(output_file_name, index=False)
     pd.DataFrame(dict(sorted(backoffs.items()))).to_csv(
-        f"csv_results/{CW_MIN}-{CW_MAX}-{STATION_RANGE}-{time_now}-backoffs.csv",
+        f"csv_results/different-payload-{CW_MIN}-{CW_MAX}-{STATION_RANGE}-{time_now}-backoffs.csv",
         index=False,
     )
     show_results(output_file_name)

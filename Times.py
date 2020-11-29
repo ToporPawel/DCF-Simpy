@@ -16,7 +16,7 @@ _overhead = 22  # [b]
 
 # OFDM parameters
 phy_data_rate = 54 * pow(10, -6)  # [Mb/us] Possible values 6, 9, 12, 18, 24, 36, 48, 54
-phy_ctr_rate = 6 * pow(10, -6)  # [Mb/u]
+phy_ctr_rate = 24 * pow(10, -6)  # [Mb/u]
 n_data = 4 * phy_data_rate  # [b/symbol]
 n_ctr = 4 * phy_ctr_rate  # [b/symbol]
 ctr_rate = phy_ctr_rate * pow(10, 6)  # [b/us]

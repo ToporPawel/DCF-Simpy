@@ -166,8 +166,8 @@ def plot_thr(times_thr):
 
 def calculate_mean_and_std(csv_name):
     data = pd.read_csv(csv_name, delimiter=",")
-    df = pd.DataFrame(data.groupby(["N_OF_STATIONS"]).mean())
-    df["THR_STD"] = data.groupby(["N_OF_STATIONS"])["THR"].std()
+    df = pd.DataFrame(data.groupby(["N_OF_STATIONS", "PAYLOAD"]).mean())
+    df["THR_STD"] = data.groupby(["N_OF_STATIONS", "PAYLOAD"])["THR"].std()
     df.to_csv(f"{csv_name[:-4]}-mean.csv")
 
 
@@ -197,6 +197,25 @@ def show_backoffs(csv_name):
     plt.show()
 
 
+def show_payload(csv_name, notes=""):
+     results = pd.read_csv(csv_name, delimiter=",")
+
+     ax = results.plot(x="PAYLOAD", y="THR", kind="bar")
+     ax.set_xlabel("Number of stations")
+     ax.set_ylabel("Collision probability")
+     # x_ticks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+     # ax.set_xticks(range(len(x_ticks)))
+     # ax.set_xticklabels(x_ticks)
+     # ax.legend(results.iloc[[0, 1, 2, 3, -1], 10].tolist())
+     # print(
+     #     "\ncalculate_p_coll_mse\nMSE for DCF-SimPy vs:\nns-3.30.1: {}\nns-3.31: {}\nAnalitical model: {}\nMatlab simulation: {}".format(
+     #         *results.iloc[-1, 11:15].tolist()
+     #     )
+     # )
+     plt.savefig("pdf/CHANGING_PAYLOAD.pdf")
+     plt.show()
+
+
 # def calculate_mean():
 #     with open("results.txt", "r") as f:
 #         res = {'1': [0,0], '2': [0,0],'3': [0,0],'4': [0,0],'5': [0,0],'6': [0,0],'7': [0,0],'8': [0,0],'9': [0,0],'10': [0,0]}
@@ -217,13 +236,14 @@ def show_backoffs(csv_name):
 def show_results(file):
     file_mean = f"{file[:-4]}-mean.csv"
     calculate_mean_and_std(file)
-    calculate_p_coll_mse(file_mean)
-    calculate_thr_mse_stderr(file)
-    calculate_thr_mse(file_mean)
-    plot_thr(t.get_thr(1472))
-    show_backoffs("csv_results/final.csv")
+    # calculate_p_coll_mse(file_mean)
+    # calculate_thr_mse_stderr(file)
+    # calculate_thr_mse(file_mean)
+    # plot_thr(t.get_thr(1472))
+    # show_backoffs("csv_results/final.csv")
+    show_payload(file_mean)
 
 
 if __name__ == "__main__":
     # show_results("csv/final.csv")
-    show_results("csv/final-24.csv")
+    show_results("csv/different-payload-15-1023-10-2020-11-28-12-36-1606563419.csv")
