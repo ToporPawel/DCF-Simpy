@@ -198,22 +198,18 @@ def show_backoffs(csv_name):
 
 
 def show_payload(csv_name, notes=""):
-     results = pd.read_csv(csv_name, delimiter=",")
+    results = pd.read_csv(csv_name, delimiter=",")
+    ns3_results = pd.DataFrame(pd.read_csv("csv_results/change_payload_ns3.csv").groupby(["PAYLOAD"]).mean())
 
-     ax = results.plot(x="PAYLOAD", y="THR", kind="bar")
-     ax.set_xlabel("Number of stations")
-     ax.set_ylabel("Collision probability")
-     # x_ticks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-     # ax.set_xticks(range(len(x_ticks)))
-     # ax.set_xticklabels(x_ticks)
-     # ax.legend(results.iloc[[0, 1, 2, 3, -1], 10].tolist())
-     # print(
-     #     "\ncalculate_p_coll_mse\nMSE for DCF-SimPy vs:\nns-3.30.1: {}\nns-3.31: {}\nAnalitical model: {}\nMatlab simulation: {}".format(
-     #         *results.iloc[-1, 11:15].tolist()
-     #     )
-     # )
-     plt.savefig("pdf/CHANGING_PAYLOAD.pdf")
-     plt.show()
+    results["THR_NS3"] = ns3_results["THR"].tolist()
+    print(results)
+    ax = results.plot(x="PAYLOAD", y=["THR", "THR_NS3"], kind="bar")
+    # plt.bar(x=results["PAYLOAD"], y=[results["THR", ns3_results["THR"]]])
+    ax.set_xlabel("Payload size [B]")
+    ax.set_ylabel("Throughput [Mb/s]")
+
+    plt.savefig("pdf/CHANGING_PAYLOAD.pdf")
+    plt.show()
 
 
 # def calculate_mean():
