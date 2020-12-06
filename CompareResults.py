@@ -197,17 +197,41 @@ def show_backoffs(csv_name):
     plt.show()
 
 
-def show_payload(csv_name, notes=""):
-    results = pd.read_csv(csv_name, delimiter=",")
-    ns3_results = pd.DataFrame(pd.read_csv("csv_results/change_payload_ns3.csv").groupby(["PAYLOAD"]).mean())
+def show_payload(csv_name, file_mean, notes=""):
+    dcf_results = pd.read_csv(csv_name, delimiter=",")
+    dcf_results_mean = pd.read_csv(file_mean, delimiter=",")
+    ns3_df = pd.read_csv("csv_results/change_payload_ns3.csv")
+    ns3_results = pd.DataFrame(ns3_df.groupby(["PAYLOAD"]).mean())
+    alpha = 0.05
+    std = dcf_results.groupby("PAYLOAD").std().loc[:, "THR"]
+    n = dcf_results.groupby("PAYLOAD").count().loc[:, "THR"]
+    yerr = std / np.sqrt(n) * st.t.ppf(1 - alpha / 2, n - 1)
+    # dcf_results_mean = pd.DataFrame(dcf_results.groupby(["N_OF_STATIONS", "PAYLOAD"]).mean())
+    plt.errorbar(
+        dcf_results_mean.PAYLOAD,
+        dcf_results_mean.THR,
+        yerr=yerr,
+        fmt="--",
+        capsize=4,
+    )
+    dcf_results_mean["THR_NS3"] = ns3_results["THR"].tolist()
+    # print(dcf_results_mean)
+    std = ns3_df.groupby("PAYLOAD").std().loc[:, "THR"]
+    n = ns3_df.groupby("PAYLOAD").count().loc[:, "THR"]
+    yerr = std / np.sqrt(n) * st.t.ppf(1 - alpha / 2, n - 1)
+    plt.errorbar(
+        dcf_results_mean.PAYLOAD,
+        dcf_results_mean.THR_NS3,
+        yerr=yerr,
+        fmt="--",
+        capsize=4,
+    )
 
-    results["THR_NS3"] = ns3_results["THR"].tolist()
-    print(results)
-    ax = results.plot(x="PAYLOAD", y=["THR", "THR_NS3"], kind="bar")
+    # ax = dcf_results_mean.plot(x="PAYLOAD", y=["THR", "THR_NS3"], style=["*-", "x-"])
     # plt.bar(x=results["PAYLOAD"], y=[results["THR", ns3_results["THR"]]])
-    ax.set_xlabel("Payload size [B]")
-    ax.set_ylabel("Throughput [Mb/s]")
-
+    plt.xlabel("Payload size [B]")
+    plt.ylabel("Throughput [Mb/s]")
+    plt.legend(["DCF-SimPy", "ns-3.31"])
     plt.savefig("pdf/CHANGING_PAYLOAD.pdf")
     plt.show()
 
@@ -237,7 +261,7 @@ def show_results(file):
     # calculate_thr_mse(file_mean)
     # plot_thr(t.get_thr(1472))
     # show_backoffs("csv_results/final.csv")
-    show_payload(file_mean)
+    show_payload(file, file_mean)
 
 
 if __name__ == "__main__":
