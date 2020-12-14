@@ -1,5 +1,5 @@
 simpy
 pandas
 matplotlib
-numpy
 scipy
+click

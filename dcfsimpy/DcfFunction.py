@@ -1,15 +1,15 @@
-import random
-import simpy
 import logging
+import os
+import random
 import time
-import pandas as pd
-import threading
-import Times as t
-from CompareResults import show_results
 from dataclasses import dataclass, field
-from typing import List
 from datetime import datetime
+from typing import Dict, List
 
+import pandas as pd
+import simpy
+
+from .Times import *
 
 colors = [
     "\033[30m",
@@ -21,23 +21,18 @@ colors = [
     "\033[36m",
     "\033[37m",
 ]  # colors to distinguish stations in output
-logging.basicConfig(format="%(message)s", level=logging.ERROR)
 
 
-DATA_SIZE = 1472  # size od payload in b
-CW_MIN = 15  # min cw window size
-CW_MAX = 1023  # max cw window size
-R_limit = 7  # max count of failed retransmissions before cw reset
+@dataclass()
+class Config:
+    data_size: int = 1472  # size od payload in b
+    cw_min: int = 15  # min cw window size
+    cw_max: int = 1023  # max cw window size
+    r_limit: int = 7
+    mcs: int = 7
 
-SIMULATION_TIME = 100000000  # time of simulation in un
-# SIMULATION_TIME = 10000
-STATION_RANGE = 10  # max count of station in simulation
-SIMS_PER_STATION_NUM = 10  # runs per station count
 
 big_num = 10000000  # some big number for transmitting query preemption
-backoffs = {
-    key: [0 for i in range(1, STATION_RANGE + 1)] for key in range(CW_MAX + 1)
-}  # dict for storing drawn Back Offs
 
 
 def log(station, mes: str) -> None:
@@ -52,9 +47,10 @@ class Station:
         env: simpy.Environment,
         name: str,
         channel: dataclass,
-        cw_min: int = CW_MIN,
-        cw_max: int = CW_MAX,
+        config: Config = Config(),
     ):
+        self.config = config
+        self.times = Times(config.data_size, config.mcs)
         self.name = name  # name of the station
         self.env = env  # current environment
         self.col = random.choice(colors)  # color of output
@@ -64,8 +60,8 @@ class Station:
         self.failed_transmissions_in_row = (
             0  # all failed transmissions for station without succeeded transmissions
         )
-        self.cw_min = cw_min  # cw min parameter value
-        self.cw_max = cw_max  # cw max parameter value
+        self.cw_min = config.cw_min  # cw min parameter value
+        self.cw_max = config.cw_max  # cw max parameter value
         self.channel = channel  # channel object
         env.process(self.start())  # simulation process
         self.process = None  # waiting back off process
@@ -87,7 +83,7 @@ class Station:
             try:
                 with self.channel.tx_lock.request() as req:  # wait for the lock/idle channel
                     yield req
-                back_off_time += t.t_difs  # add DIFS time
+                back_off_time += Times.t_difs  # add DIFS time
                 log(self, f"Starting to wait backoff: ({back_off_time})u...")
                 start = self.env.now  # store the current simulation time
                 self.channel.back_off_list.append(
@@ -138,7 +134,7 @@ class Station:
                 was_sent = self.check_collision()  # check if collision occurred
                 if was_sent:  # transmission successful
                     yield self.env.timeout(
-                        t.t_sifs + t.get_ack_frame_time()
+                        self.times.get_ack_frame_time()
                     )  # wait ack
                     self.channel.tx_list.clear()  # clear transmitting list
                     self.channel.tx_queue.release(res)  # leave the transmitting queue
@@ -150,18 +146,20 @@ class Station:
                 self.env, capacity=1
             )  # create new empty transmitting queue
             yield self.env.timeout(
-                t.get_ack_timeout()
+                self.times.ack_timeout
             )  # simulate ack timeout after failed transmission
             return False
         except simpy.Interrupt:  # this station does not have the longest frame, waiting frame time
             yield self.env.timeout(self.frame_to_send.frame_time)
         was_sent = self.check_collision()
         if was_sent:  # check if collision occurred
-            yield self.env.timeout(t.t_sifs + t.get_ack_frame_time())  # wait ack
+            yield self.env.timeout(
+                self.times.get_ack_frame_time()
+            )  # wait ack
         else:
             log(self, "waiting wck timeout slave")
             yield self.env.timeout(
-                t.get_ack_timeout()
+                Times.ack_timeout
             )  # simulate ack timeout after failed transmission
         return was_sent
 
@@ -183,16 +181,16 @@ class Station:
             upper_limit if upper_limit <= self.cw_max else self.cw_max
         )  # set upper limit to CW Max if is bigger then this parameter
         back_off = random.randint(0, upper_limit)  # draw the back off value
-        backoffs[back_off][
-            self.channel.n_of_stations - 1
+        self.channel.backoffs[back_off][
+            self.channel.n_of_stations
         ] += 1  # store drawn value for future analyzes
-        return back_off * t.t_slot
+        return back_off * self.times.t_slot
 
     def generate_new_frame(self):
-        # data_size = random.randrange(0, 2304)
-        data_size = DATA_SIZE
-        frame_length = t.get_ppdu_frame_time(data_size)
-        return Frame(frame_length, self.name, self.col, data_size, self.env.now)
+        frame_length = self.times.get_ppdu_frame_time()
+        return Frame(
+            frame_length, self.name, self.col, self.config.data_size, self.env.now
+        )
 
     def sent_failed(self):
         log(self, "There was a collision")
@@ -201,12 +199,15 @@ class Station:
         self.failed_transmissions += 1
         self.failed_transmissions_in_row += 1
         log(self, self.channel.failed_transmissions)
-        if self.frame_to_send.number_of_retransmissions > R_limit:
+        if self.frame_to_send.number_of_retransmissions > self.config.r_limit:
             self.frame_to_send = self.generate_new_frame()
             self.failed_transmissions_in_row = 0
 
     def sent_completed(self):
-        log(self, f"Successfully sent frame, waiting ack: {t.get_ack_frame_time()}")
+        log(
+            self,
+            f"Successfully sent frame, waiting ack: {self.times.get_ack_frame_time()}",
+        )
         self.frame_to_send.t_end = self.env.now
         self.frame_to_send.t_to_send = (
             self.frame_to_send.t_end - self.frame_to_send.t_start
@@ -223,6 +224,7 @@ class Channel:
     tx_queue: simpy.PreemptiveResource  # lock for the stations with the longest frame to transmit
     tx_lock: simpy.Resource  # channel lock (locked when there is ongoing transmission)
     n_of_stations: int  # number of transmitting stations in the channel
+    backoffs: Dict[int, Dict[int, int]]
     tx_list: List[Station] = field(
         default_factory=list
     )  # transmitting stations in the channel
@@ -253,59 +255,67 @@ class Frame:
         )
 
 
-def run_simulation(number_of_stations, seed):
-    random.seed(seed * 33)
+def run_simulation(
+    number_of_stations: int,
+    seed: int,
+    simulation_time: int,
+    skip_results: bool,
+    config: Config,
+    backoffs: Dict[int, Dict[int, int]],
+    results: Dict[str, List[str]],
+):
+    random.seed(seed)
     environment = simpy.Environment()
     channel = Channel(
         simpy.PreemptiveResource(environment, capacity=1),
         simpy.Resource(environment, capacity=1),
         number_of_stations,
+        backoffs,
     )
     for i in range(1, number_of_stations + 1):
-        Station(environment, "Station {}".format(i), channel)
-    environment.run(until=SIMULATION_TIME)
+        Station(environment, "Station {}".format(i), channel, config)
+    environment.run(until=simulation_time * 1000000)
     p_coll = "{:.4f}".format(
         channel.failed_transmissions
         / (channel.failed_transmissions + channel.succeeded_transmissions)
     )
     print(
-        f"SEED = {seed} N={number_of_stations} CW_MIN = {CW_MIN} CW_MAX = {CW_MAX}  PCOLL: {p_coll} THR: {(channel.bytes_sent*8)/SIMULATION_TIME} "
+        f"SEED = {seed} N={number_of_stations} CW_MIN = {config.cw_min} CW_MAX = {config.cw_max}  PCOLL: {p_coll} THR:"
+        f" {(channel.bytes_sent*8)/(simulation_time * 1000000)} "
         f"FAILED_TRANSMISSIONS: {channel.failed_transmissions}"
         f" SUCCEEDED_TRANSMISSION {channel.succeeded_transmissions}"
     )
-    add_to_results(p_coll, channel, number_of_stations)
+    if not skip_results:
+        add_to_results(
+            p_coll, channel, number_of_stations, results, seed, simulation_time, config
+        )
 
 
-def add_to_results(p_coll, channel, n):
+def add_to_results(p_coll, channel, n, results, seed, simulation_time, config: Config):
     results.setdefault("TIMESTAMP", []).append(datetime.fromtimestamp(time.time()))
-    results.setdefault("CW_MIN", []).append(CW_MIN)
-    results.setdefault("CW_MAX", []).append(CW_MAX)
+    results.setdefault("CW_MIN", []).append(config.cw_min)
+    results.setdefault("CW_MAX", []).append(config.cw_max)
     results.setdefault("N_OF_STATIONS", []).append(n)
     results.setdefault("SEED", []).append(seed)
     results.setdefault("P_COLL", []).append(p_coll)
-    results.setdefault("THR", []).append((channel.bytes_sent * 8) / SIMULATION_TIME)
+    results.setdefault("THR", []).append(
+        (channel.bytes_sent * 8) / (simulation_time * 1000000)
+    )
     results.setdefault("FAILED_TRANSMISSIONS", []).append(channel.failed_transmissions)
     results.setdefault("SUCCEEDED_TRANSMISSIONS", []).append(
         channel.succeeded_transmissions
     )
+    results.setdefault("PAYLOAD", []).append(config.data_size)
+    results.setdefault("MCS", []).append(config.mcs)
 
 
-if __name__ == "__main__":
-    results = dict()
-    for seed in range(1, SIMS_PER_STATION_NUM + 1):
-        threads = [
-            threading.Thread(target=run_simulation, args=(n, seed * 33,))
-            for n in range(1, STATION_RANGE + 1)
-        ]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
-    time_now = datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d-%H-%M-%s")
-    output_file_name = f"csv/{CW_MIN}-{CW_MAX}-{STATION_RANGE}-{time_now}.csv"
-    pd.DataFrame(results).to_csv(output_file_name, index=False)
+def save_results(
+    results: Dict[str, str], backoffs: Dict[int, Dict[int, int]], function_name
+):
+    path = f"{os.getcwd()}/results/{datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d-%H-%M-%s')}-{function_name}/"
+    os.mkdir(path)
+    pd.DataFrame(results).to_csv(f"{path}results.csv", index=False)
     pd.DataFrame(dict(sorted(backoffs.items()))).to_csv(
-        f"csv_results/{CW_MIN}-{CW_MAX}-{STATION_RANGE}-{time_now}-backoffs.csv",
-        index=False,
+        f"{path}backoffs.csv", index=False,
     )
-    show_results(output_file_name)
+    return path
